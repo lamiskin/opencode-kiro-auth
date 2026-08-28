@@ -172,6 +172,25 @@ describe('syncFromKiroCli IdC regions', () => {
     expect(stored[0].expiresAt).toBe(0)
   })
 
+  test('re-imports a healthy row whose stored client registration is stale', async () => {
+    seedCliDb([
+      ['kirocli:odic:device-registration', registration('client-new')],
+      ['kirocli:odic:token', idcToken()]
+    ])
+
+    await syncFromKiroCli()
+    expect(stored).toHaveLength(1)
+    // Simulate a row imported by the old code from the legacy registration.
+    stored[0].clientId = 'client-legacy'
+    stored[0].clientSecret = 'client-legacy-secret'
+
+    await syncFromKiroCli()
+
+    expect(stored).toHaveLength(1)
+    expect(stored[0].clientId).toBe('client-new')
+    expect(stored[0].clientSecret).toBe('client-new-secret')
+  })
+
   test('re-imports a healthy row whose stored OIDC region is wrong', async () => {
     const expiresAt = Date.now() + 3600000
     seedCliDb([

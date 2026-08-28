@@ -90,13 +90,18 @@ export class TokenRefresher {
     const synced = accounts.find((a: ManagedAccount) => a.id === account.id)
 
     // IdC refresh tokens are single-use: if kiro-cli refreshed behind our back, the
-    // token we just tried is dead but the one it stored is live. Adopt the synced
+    // token we just tried is dead but the one it stored is live. The same goes for
+    // the client registration: a stale client_id/secret fails with "Client is
+    // expired" no matter how fresh the refresh token is. Adopt the synced
     // credentials into the in-memory account (the request loop re-selects from
     // memory, and a later save would otherwise clobber the DB row with our stale
-    // token), then retry the refresh with them before giving up on the account.
+    // values), then retry the refresh with them before giving up on the account.
     if (
       synced &&
-      (synced.refreshToken !== account.refreshToken || synced.accessToken !== account.accessToken)
+      (synced.refreshToken !== account.refreshToken ||
+        synced.accessToken !== account.accessToken ||
+        synced.clientId !== account.clientId ||
+        synced.clientSecret !== account.clientSecret)
     ) {
       const syncedAuth = this.accountManager.toAuthDetails(synced)
       this.accountManager.updateFromAuth(account, syncedAuth)

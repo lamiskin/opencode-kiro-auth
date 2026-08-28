@@ -223,6 +223,7 @@ export class AccountManager {
       acc.refreshToken = p.refreshToken
       if (p.profileArn) acc.profileArn = p.profileArn
       if (p.clientId) acc.clientId = p.clientId
+      if (p.clientSecret) acc.clientSecret = p.clientSecret
       acc.failCount = 0
       acc.isHealthy = true
       delete acc.unhealthyReason
