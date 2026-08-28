@@ -136,6 +136,42 @@ describe('syncFromKiroCli IdC regions', () => {
     expect(stored[0].clientSecret).toBe('client-new-secret')
   })
 
+  test('ignores legacy codewhisperer rows left behind by the Q CLI migration', async () => {
+    seedCliDb([
+      ['codewhisperer:odic:device-registration', registration('client-legacy')],
+      [
+        'codewhisperer:odic:token',
+        idcToken({
+          access_token: 'legacy-access',
+          refresh_token: 'legacy-refresh',
+          // time crate's default OffsetDateTime format, as written by the old Q CLI
+          expires_at: '2025-03-01 12:00:00.0 +00:00:00'
+        })
+      ],
+      ['kirocli:odic:device-registration', registration('client-new')],
+      ['kirocli:odic:token', idcToken()]
+    ])
+
+    await syncFromKiroCli()
+
+    expect(stored).toHaveLength(1)
+    expect(stored[0].accessToken).toBe('cli-access')
+    expect(stored[0].refreshToken).toBe('cli-refresh')
+    expect(stored[0].clientId).toBe('client-new')
+  })
+
+  test('treats an unparseable expiry as expired rather than valid for an hour', async () => {
+    seedCliDb([
+      ['kirocli:odic:device-registration', registration('client-new')],
+      ['kirocli:odic:token', idcToken({ expires_at: '2025-03-01 12:00:00.0 +00:00:00' })]
+    ])
+
+    await syncFromKiroCli()
+
+    expect(stored).toHaveLength(1)
+    expect(stored[0].expiresAt).toBe(0)
+  })
+
   test('re-imports a healthy row whose stored OIDC region is wrong', async () => {
     const expiresAt = Date.now() + 3600000
     seedCliDb([

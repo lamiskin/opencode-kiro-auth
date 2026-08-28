@@ -25,7 +25,21 @@ export async function syncFromKiroCli() {
   try {
     const cliDb = new Database(dbPath, { readonly: true })
     cliDb.pragma('busy_timeout = 5000')
-    const rows = cliDb.prepare('SELECT key, value FROM auth_kv').all() as any[]
+    const allRows = cliDb.prepare('SELECT key, value FROM auth_kv').all() as any[]
+    // kiro-cli migrates Amazon Q CLI credentials to `kirocli:` keys but can leave the
+    // `codewhisperer:` originals behind. Those carry an expired client registration
+    // and a token whose expiry is in a date format we can't parse, so importing them
+    // pairs a dead client with a dead token. Ignore them whenever current keys exist.
+    const hasCurrentKeys = allRows.some(
+      (r) => typeof r?.key === 'string' && r.key.startsWith('kirocli:')
+    )
+    const rows = hasCurrentKeys
+      ? allRows.filter((r) => !String(r?.key).startsWith('codewhisperer:'))
+      : allRows
+    logger.log('Kiro CLI sync: auth_kv keys', {
+      imported: rows.map((r) => r.key),
+      ignored: allRows.filter((r) => !rows.includes(r)).map((r) => r.key)
+    })
     let activeProfileArn: string | undefined
     try {
       const stateRow = cliDb
@@ -82,8 +96,9 @@ export async function syncFromKiroCli() {
           continue
         }
 
-        const cliExpiresAt =
-          normalizeExpiresAt(data.expires_at ?? data.expiresAt) || Date.now() + 3600000
+        // An expiry we can't parse means "refresh before use", not "valid for another
+        // hour": trusting an undated token sends dead bearers and hides the real failure.
+        const cliExpiresAt = normalizeExpiresAt(data.expires_at ?? data.expiresAt)
 
         let usedCount = 0
         let limitCount = 0
