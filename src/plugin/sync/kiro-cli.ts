@@ -38,9 +38,11 @@ export async function syncFromKiroCli() {
       // Ignore state read failures; token import can proceed.
     }
 
-    const deviceRegRow = rows.find(
-      (r) => typeof r?.key === 'string' && r.key.includes('device-registration')
-    )
+    // Prefer the current key; an unmigrated legacy `codewhisperer:odic:device-registration`
+    // row pairs the new refresh token with a client secret that no longer matches it.
+    const deviceRegRow =
+      rows.find((r) => r?.key === 'kirocli:odic:device-registration') ||
+      rows.find((r) => typeof r?.key === 'string' && r.key.includes('device-registration'))
     const deviceReg = safeJsonParse(deviceRegRow?.value)
     const regCreds = deviceReg ? findClientCredsRecursive(deviceReg) : {}
     const syncedAccounts: SyncedCliAccount[] = []
@@ -54,10 +56,12 @@ export async function syncFromKiroCli() {
         const authMethod = isIdc ? 'idc' : 'desktop'
         let profileArn: string | undefined = data.profile_arn || data.profileArn
         if (!profileArn && isIdc) profileArn = activeProfileArn || readActiveProfileArnFromKiroCli()
-        // serviceRegion wins over data.region: kiro-cli stores data.region as the
-        // OIDC region (often us-east-1) regardless of where the account actually lives.
+        // kiro-cli stores data.region as the SSO OIDC region it registered the client
+        // in and refreshes against; the profileArn region is where the Q API lives.
+        // Refreshing against the profile region fails with invalid_grant whenever the
+        // two differ, so keep them separate.
         const serviceRegion = extractRegionFromArn(profileArn) || normalizeRegion(data.region)
-        const oidcRegion = serviceRegion
+        const oidcRegion = normalizeRegion(data.region)
         const startUrl: string | undefined =
           typeof data.start_url === 'string'
             ? data.start_url
@@ -164,7 +168,8 @@ export async function syncFromKiroCli() {
           existingById &&
           existingById.is_healthy === 1 &&
           existingById.expires_at >= cliExpiresAt &&
-          existingById.expires_at > Date.now()
+          existingById.expires_at > Date.now() &&
+          existingById.oidc_region === oidcRegion
         )
           continue
 

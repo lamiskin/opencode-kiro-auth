@@ -123,14 +123,20 @@ export class RequestHandler {
       }
 
       consecutiveNullAccounts = 0
-      const auth = this.accountManager.toAuthDetails(acc)
 
-      const tokenResult = await this.tokenRefresher.refreshIfNeeded(acc, auth, showToast)
+      const tokenResult = await this.tokenRefresher.refreshIfNeeded(
+        acc,
+        this.accountManager.toAuthDetails(acc),
+        showToast
+      )
       if (tokenResult.shouldContinue) {
         acc = tokenResult.account
         await this.sleep(500)
         continue
       }
+      // Read the auth details after the refresh: refreshIfNeeded updates the
+      // account in place, and a snapshot taken before it would send the old token.
+      const auth = this.accountManager.toAuthDetails(acc)
 
       const sdkPrep = this.prepareSdkRequest(init?.body, model, auth, think, budget, showToast)
 

@@ -218,6 +218,7 @@ export class AccountManager {
       acc.expiresAt = auth.expires
       acc.lastUsed = Date.now()
       if (auth.email) acc.email = auth.email
+      if (auth.oidcRegion) acc.oidcRegion = auth.oidcRegion
       const p = decodeRefreshToken(auth.refresh)
       acc.refreshToken = p.refreshToken
       if (p.profileArn) acc.profileArn = p.profileArn
