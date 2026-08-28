@@ -3,12 +3,14 @@ import type { ManagedAccount } from '../plugin/types.js'
 
 // Controllable stand-in for the OIDC refresh call.
 let refreshCalls: string[] = []
+let refreshSecrets: string[] = []
 let refreshResults: Record<string, { access: string; refresh: string } | Error> = {}
 
 mock.module('../plugin/token.js', () => ({
   refreshAccessToken: async (auth: any) => {
     const refreshToken = auth.refresh.split('|')[0]
     refreshCalls.push(refreshToken)
+    refreshSecrets.push(auth.clientSecret)
     const result = refreshResults[refreshToken]
     if (!result) throw new Error(`unexpected refresh token ${refreshToken}`)
     if (result instanceof Error) throw result
@@ -112,6 +114,7 @@ function harness(syncedRow: ManagedAccount | undefined) {
 
 beforeEach(() => {
   refreshCalls = []
+  refreshSecrets = []
   refreshResults = { 'stale-refresh': invalidGrant() }
 })
 
@@ -176,6 +179,23 @@ describe('TokenRefresher recovery after a failed refresh', () => {
     // The DB row must not be clobbered with the token we already know is dead.
     expect(account.refreshToken).toBe('cli-refresh')
     expect(batchSaved.at(-1)?.[0]?.refreshToken).toBe('cli-refresh')
+  })
+
+  test('retries with the client registration kiro-cli holds when ours is stale', async () => {
+    refreshResults['stale-refresh'] = new KiroTokenRefreshError(
+      'Refresh failed: Client is expired',
+      'invalid_client'
+    )
+    const { account, run } = harness(makeAccount({ clientId: 'cid-new', clientSecret: 'csec-new' }))
+
+    const result = await run()
+
+    expect(result.shouldContinue).toBe(true)
+    // Same refresh token both times; only the registration changed.
+    expect(refreshCalls).toEqual(['stale-refresh', 'stale-refresh'])
+    expect(refreshSecrets).toEqual(['csec', 'csec-new'])
+    expect(account.clientId).toBe('cid-new')
+    expect(account.clientSecret).toBe('csec-new')
   })
 
   test('marks the account unhealthy when kiro-cli has nothing newer', async () => {

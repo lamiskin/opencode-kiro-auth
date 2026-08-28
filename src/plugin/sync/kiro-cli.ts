@@ -179,14 +179,24 @@ export async function syncFromKiroCli() {
 
         const id = createDeterministicAccountId(resolvedEmail, authMethod, clientId, profileArn)
         const existingById = all.find((a) => a.id === id)
+        // A stored row only counts as current if it carries the same client
+        // registration kiro-cli holds now; an older one (e.g. imported from the legacy
+        // Q CLI rows) refreshes with "invalid_client: Client is expired" forever.
+        const sameRegistration =
+          !!existingById &&
+          (existingById.client_id || null) === (clientId || null) &&
+          (existingById.client_secret || null) === (clientSecret || null)
         if (
           existingById &&
           existingById.is_healthy === 1 &&
           existingById.expires_at >= cliExpiresAt &&
           existingById.expires_at > Date.now() &&
-          existingById.oidc_region === oidcRegion
-        )
+          existingById.oidc_region === oidcRegion &&
+          sameRegistration
+        ) {
+          logger.debug('Kiro CLI sync: stored account is current; skipping', { id })
           continue
+        }
 
         if (usageOk) {
           const placeholderEmail = makePlaceholderEmail(
