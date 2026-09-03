@@ -42,6 +42,8 @@ export async function* transformSdkStream(
   let textOnlyContent = ''
   let outputTokens = 0
   let inputTokens = 0
+  let totalTokens = 0
+  let tokenUsageReceived = false
   let contextUsagePercentage: number | null = null
   const toolCallFragments = new Map<string, PendingToolCall>()
   const toolCallOrder: string[] = []
@@ -181,7 +183,23 @@ export async function* transformSdkStream(
           }
         }
       } else if (event.metadataEvent) {
-        if (event.metadataEvent.contextUsagePercentage) {
+        const usage = event.metadataEvent.tokenUsage
+        if (usage) {
+          if (typeof usage.uncachedInputTokens === 'number') {
+            inputTokens = usage.uncachedInputTokens
+          }
+          if (typeof usage.outputTokens === 'number') {
+            outputTokens = usage.outputTokens
+          }
+          if (typeof usage.totalTokens === 'number') {
+            totalTokens = usage.totalTokens
+          }
+          tokenUsageReceived = true
+          if (typeof usage.contextUsagePercentage === 'number') {
+            contextUsagePercentage = usage.contextUsagePercentage
+          }
+        }
+        if (typeof event.metadataEvent.contextUsagePercentage === 'number') {
           contextUsagePercentage = event.metadataEvent.contextUsagePercentage
         }
       } else if ((event as any).contextUsageEvent) {
@@ -296,9 +314,11 @@ export async function* transformSdkStream(
       }
     }
 
-    outputTokens = estimateTokens(textOnlyContent)
+    if (!tokenUsageReceived) {
+      outputTokens = estimateTokens(textOnlyContent)
+    }
 
-    if (contextUsagePercentage !== null && contextUsagePercentage > 0) {
+    if (!tokenUsageReceived && contextUsagePercentage !== null && contextUsagePercentage > 0) {
       const contextWindow = getContextWindowSize(model)
       const totalTokens = Math.round((contextWindow * contextUsagePercentage) / 100)
       inputTokens = Math.max(0, totalTokens - outputTokens)
@@ -312,6 +332,7 @@ export async function* transformSdkStream(
           usage: {
             input_tokens: inputTokens,
             output_tokens: outputTokens,
+            total_tokens: totalTokens || inputTokens + outputTokens,
             cache_creation_input_tokens: 0,
             cache_read_input_tokens: 0
           }

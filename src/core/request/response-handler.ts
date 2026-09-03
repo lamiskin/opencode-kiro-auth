@@ -140,6 +140,7 @@ export class ResponseHandler {
     const toolCallOrder: string[] = []
     let inputTokens = 0
     let outputTokens = 0
+    let totalTokens = 0
 
     const eventStream = sdkResponse.generateAssistantResponseResponse
     if (eventStream) {
@@ -169,8 +170,16 @@ export class ResponseHandler {
           }
         }
         if (event.metadataEvent?.tokenUsage) {
-          inputTokens = event.metadataEvent.tokenUsage.inputTokens || 0
-          outputTokens = event.metadataEvent.tokenUsage.outputTokens || 0
+          const usage = event.metadataEvent.tokenUsage
+          if (typeof usage.uncachedInputTokens === 'number') {
+            inputTokens = usage.uncachedInputTokens
+          }
+          if (typeof usage.outputTokens === 'number') {
+            outputTokens = usage.outputTokens
+          }
+          if (typeof usage.totalTokens === 'number') {
+            totalTokens = usage.totalTokens
+          }
         }
       }
     }
@@ -197,7 +206,7 @@ export class ResponseHandler {
       usage: {
         prompt_tokens: inputTokens,
         completion_tokens: outputTokens,
-        total_tokens: inputTokens + outputTokens
+        total_tokens: totalTokens || inputTokens + outputTokens
       }
     }
 

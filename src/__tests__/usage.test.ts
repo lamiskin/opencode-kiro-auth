@@ -32,7 +32,25 @@ function makeAccount(overrides: Partial<ManagedAccount> = {}): ManagedAccount {
   }
 }
 
-const { updateAccountQuota } = await import('../plugin/usage.js')
+const { formatUsageReport, updateAccountQuota } = await import('../plugin/usage.js')
+
+describe('formatUsageReport', () => {
+  test('formats each account and aggregate totals', () => {
+    expect(
+      formatUsageReport([
+        { email: 'one@example.com', used: 25.5, limit: 100, pct: 26 },
+        { email: 'two@example.com', used: 10, limit: 50, pct: 20 },
+        { email: 'offline@example.com', error: 'Session expired' }
+      ])
+    ).toBe(
+      'Kiro Usage\n\nAccounts:\n- one@example.com: 25.5 / 100 credits (26%)\n- two@example.com: 10 / 50 credits (20%)\n- offline@example.com: unavailable (Session expired)\n\nSummary:\n- Accounts: 3 (2 available)\n- Used: 35.5 / 150 credits (24%)'
+    )
+  })
+
+  test('reports when no accounts are configured', () => {
+    expect(formatUsageReport([])).toBe('Kiro Usage\n\nNo Kiro accounts found.')
+  })
+})
 
 describe('updateAccountQuota', () => {
   test('updates usedCount and limitCount on account', () => {

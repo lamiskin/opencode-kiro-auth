@@ -414,6 +414,58 @@ describe('CodeWhisperer tool compatibility', () => {
     expect(body.choices[0].message.tool_calls[0].function.name).toBe(LONG_TOOL_NAME)
   })
 
+  test('uses Kiro token usage in non-streaming responses', async () => {
+    const response = await new ResponseHandler().handleSdkSuccess(
+      {
+        generateAssistantResponseResponse: (async function* () {
+          yield { assistantResponseEvent: { content: 'Answer.' } }
+          yield {
+            metadataEvent: {
+              tokenUsage: { uncachedInputTokens: 1234, outputTokens: 56, totalTokens: 1290 }
+            }
+          }
+        })()
+      },
+      MODEL,
+      'conversation-1',
+      false
+    )
+
+    expect((await response.json()).usage).toEqual({
+      prompt_tokens: 1234,
+      completion_tokens: 56,
+      total_tokens: 1290
+    })
+  })
+
+  test('uses Kiro token usage in streaming responses', async () => {
+    const events: any[] = []
+    for await (const event of transformSdkStream(
+      {
+        generateAssistantResponseResponse: (async function* () {
+          yield { assistantResponseEvent: { content: 'Answer.' } }
+          yield {
+            metadataEvent: {
+              tokenUsage: { uncachedInputTokens: 1234, outputTokens: 56, totalTokens: 1290 }
+            }
+          }
+        })()
+      },
+      MODEL,
+      'conversation-1'
+    )) {
+      events.push(event)
+    }
+
+    expect(events.find((event) => event.usage)?.usage).toEqual({
+      prompt_tokens: 1234,
+      completion_tokens: 56,
+      total_tokens: 1290,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 0
+    })
+  })
+
   test('reassembles interleaved non-streaming tool events by tool-use id', async () => {
     const wireName = 'datadog_security_findings_0123456789abcdef0123456789abcdef'
     const fragmentedResponse = {

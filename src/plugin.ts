@@ -1,6 +1,7 @@
 import { tool } from '@opencode-ai/plugin'
 import { KIRO_CONSTANTS } from './constants.js'
 import { AuthHandler } from './core/auth/auth-handler.js'
+import { TokenRefresher } from './core/auth/token-refresher.js'
 import { RequestHandler } from './core/request/request-handler.js'
 import { AccountCache } from './infrastructure/database/account-cache.js'
 import { AccountRepository } from './infrastructure/database/account-repository.js'
@@ -8,6 +9,13 @@ import { AccountManager } from './plugin/accounts.js'
 import { bootstrapAuthIfNeeded } from './plugin/auth-bootstrap.js'
 import { loadConfig } from './plugin/config/index.js'
 import { buildModelRegistry } from './plugin/model-registry.js'
+import { syncFromKiroCli } from './plugin/sync/kiro-cli.js'
+import {
+  fetchUsageLimits,
+  formatUsageReport,
+  summarizeUsage,
+  updateAccountQuota
+} from './plugin/usage.js'
 import { formatWebSearchResults, kiroWebSearch } from './plugin/web-search.js'
 
 type ToastFunction = (message: string, variant: string) => void
@@ -41,12 +49,68 @@ const WEB_SEARCH_DESCRIPTION = `Search the web using Kiro's built-in search engi
 - ALWAYS cite sources with inline links in the format [description](url).
 - Paraphrase and summarize; do not reproduce more than ~30 consecutive words verbatim from any single source. Preserve factual accuracy while condensing.`
 
-function buildTools(config: any, accountManager: AccountManager): Record<string, any> {
-  if (!config.web_search_enabled) return {}
-  const account = accountManager.getCurrentOrNext()
-  if (!account?.profileArn) return {}
+export async function fetchUsageReport(
+  config: any,
+  accountManager: AccountManager,
+  repository: AccountRepository
+): Promise<string> {
+  const refresher = new TokenRefresher(config, accountManager, syncFromKiroCli, repository)
+  const entries = [] as Array<{
+    email: string
+    used?: number
+    limit?: number
+    pct?: number
+    error?: string
+  }>
 
-  return {
+  for (const account of accountManager.getAccounts()) {
+    try {
+      const refreshed = await refresher.refreshIfNeeded(
+        account,
+        accountManager.toAuthDetails(account),
+        () => {}
+      )
+      const current = refreshed.account
+      const usage = await fetchUsageLimits(accountManager.toAuthDetails(current))
+      updateAccountQuota(current, usage, accountManager)
+      entries.push({
+        email: current.email,
+        ...summarizeUsage(usage.usedCount || 0, usage.limitCount || 0)
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      entries.push({
+        email: account.email,
+        error: message.replace(/\s+/g, ' ').slice(0, 200)
+      })
+    }
+  }
+
+  await repository.batchSave(accountManager.getAccounts())
+  return formatUsageReport(entries)
+}
+
+function buildTools(
+  config: any,
+  accountManager: AccountManager,
+  repository: AccountRepository
+): Record<string, any> {
+  const tools: Record<string, any> = {
+    kiro_usage: tool({
+      description:
+        'Refresh and report Kiro credit usage for every configured account, followed by aggregate totals. Never expose credentials or raw API responses.',
+      args: {},
+      async execute() {
+        return fetchUsageReport(config, accountManager, repository)
+      }
+    })
+  }
+
+  if (!config.web_search_enabled) return tools
+  const account = accountManager.getCurrentOrNext()
+  if (!account?.profileArn) return tools
+
+  Object.assign(tools, {
     kiro_web_search: tool({
       description: WEB_SEARCH_DESCRIPTION,
       args: {
@@ -61,7 +125,8 @@ function buildTools(config: any, accountManager: AccountManager): Record<string,
         }
       }
     })
-  }
+  })
+  return tools
 }
 
 export const createKiroPlugin =
@@ -150,7 +215,7 @@ export const createKiroPlugin =
           return normalized
         }
       },
-      tool: buildTools(config, accountManager)
+      tool: buildTools(config, accountManager, repository)
     }
   }
 

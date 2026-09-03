@@ -97,6 +97,45 @@ export function summarizeUsage(
   return { used, limit, pct }
 }
 
+export interface KiroUsageReportEntry {
+  email: string
+  used?: number
+  limit?: number
+  pct?: number
+  error?: string
+}
+
+export function formatUsageReport(entries: KiroUsageReportEntry[]): string {
+  if (entries.length === 0) return 'Kiro Usage\n\nNo Kiro accounts found.'
+
+  const successful = entries.filter(
+    (entry): entry is KiroUsageReportEntry & { used: number; limit: number; pct: number } =>
+      entry.error === undefined &&
+      typeof entry.used === 'number' &&
+      typeof entry.limit === 'number' &&
+      typeof entry.pct === 'number'
+  )
+  const totalUsed = Number(successful.reduce((sum, entry) => sum + entry.used, 0).toFixed(2))
+  const totalLimit = Number(successful.reduce((sum, entry) => sum + entry.limit, 0).toFixed(2))
+  const totalPct = totalLimit > 0 ? Math.round((totalUsed / totalLimit) * 100) : 0
+
+  const accountLines = entries.flatMap((entry) => {
+    if (entry.error) return [`- ${entry.email}: unavailable (${entry.error})`]
+    return [`- ${entry.email}: ${entry.used} / ${entry.limit} credits (${entry.pct}%)`]
+  })
+
+  return [
+    'Kiro Usage',
+    '',
+    'Accounts:',
+    ...accountLines,
+    '',
+    'Summary:',
+    `- Accounts: ${entries.length} (${successful.length} available)`,
+    `- Used: ${totalUsed} / ${totalLimit} credits (${totalPct}%)`
+  ].join('\n')
+}
+
 export function updateAccountQuota(
   account: ManagedAccount,
   usage: any,
