@@ -5,6 +5,7 @@ import type { KiroConfig } from '../../plugin/config'
 import { isOpenAIModel } from '../../plugin/effort'
 import { isPermanentError } from '../../plugin/health'
 import * as logger from '../../plugin/logger'
+import { refreshContextWindowSizes } from '../../plugin/models'
 import { transformToSdkRequest } from '../../plugin/request'
 import { createSdkClient } from '../../plugin/sdk-client'
 import { syncFromKiroCli } from '../../plugin/sync/kiro-cli'
@@ -138,6 +139,8 @@ export class RequestHandler {
       // Read the auth details after the refresh: refreshIfNeeded updates the
       // account in place, and a snapshot taken before it would send the old token.
       const auth = this.accountManager.toAuthDetails(acc)
+
+      await refreshContextWindowSizes(auth)
 
       const sdkPrep = this.prepareSdkRequest(init?.body, model, auth, think, budget, showToast)
 
