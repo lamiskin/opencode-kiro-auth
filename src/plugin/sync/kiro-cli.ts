@@ -25,7 +25,21 @@ export async function syncFromKiroCli() {
   try {
     const cliDb = new Database(dbPath, { readonly: true })
     cliDb.pragma('busy_timeout = 5000')
-    const rows = cliDb.prepare('SELECT key, value FROM auth_kv').all() as any[]
+    const allRows = cliDb.prepare('SELECT key, value FROM auth_kv').all() as any[]
+    // kiro-cli migrates Amazon Q CLI credentials to `kirocli:` keys but can leave the
+    // `codewhisperer:` originals behind. Those carry an expired client registration
+    // and a token whose expiry is in a date format we can't parse, so importing them
+    // pairs a dead client with a dead token. Ignore them whenever current keys exist.
+    const hasCurrentKeys = allRows.some(
+      (r) => typeof r?.key === 'string' && r.key.startsWith('kirocli:')
+    )
+    const rows = hasCurrentKeys
+      ? allRows.filter((r) => !String(r?.key).startsWith('codewhisperer:'))
+      : allRows
+    logger.log('Kiro CLI sync: auth_kv keys', {
+      imported: rows.map((r) => r.key),
+      ignored: allRows.filter((r) => !rows.includes(r)).map((r) => r.key)
+    })
     let activeProfileArn: string | undefined
     try {
       const stateRow = cliDb
@@ -38,9 +52,11 @@ export async function syncFromKiroCli() {
       // Ignore state read failures; token import can proceed.
     }
 
-    const deviceRegRow = rows.find(
-      (r) => typeof r?.key === 'string' && r.key.includes('device-registration')
-    )
+    // Prefer the current key; an unmigrated legacy `codewhisperer:odic:device-registration`
+    // row pairs the new refresh token with a client secret that no longer matches it.
+    const deviceRegRow =
+      rows.find((r) => r?.key === 'kirocli:odic:device-registration') ||
+      rows.find((r) => typeof r?.key === 'string' && r.key.includes('device-registration'))
     const deviceReg = safeJsonParse(deviceRegRow?.value)
     const regCreds = deviceReg ? findClientCredsRecursive(deviceReg) : {}
     const syncedAccounts: SyncedCliAccount[] = []
@@ -54,10 +70,12 @@ export async function syncFromKiroCli() {
         const authMethod = isIdc ? 'idc' : 'desktop'
         let profileArn: string | undefined = data.profile_arn || data.profileArn
         if (!profileArn && isIdc) profileArn = activeProfileArn || readActiveProfileArnFromKiroCli()
-        // serviceRegion wins over data.region: kiro-cli stores data.region as the
-        // OIDC region (often us-east-1) regardless of where the account actually lives.
+        // kiro-cli stores data.region as the SSO OIDC region it registered the client
+        // in and refreshes against; the profileArn region is where the Q API lives.
+        // Refreshing against the profile region fails with invalid_grant whenever the
+        // two differ, so keep them separate.
         const serviceRegion = extractRegionFromArn(profileArn) || normalizeRegion(data.region)
-        const oidcRegion = serviceRegion
+        const oidcRegion = normalizeRegion(data.region)
         const startUrl: string | undefined =
           typeof data.start_url === 'string'
             ? data.start_url
@@ -78,8 +96,9 @@ export async function syncFromKiroCli() {
           continue
         }
 
-        const cliExpiresAt =
-          normalizeExpiresAt(data.expires_at ?? data.expiresAt) || Date.now() + 3600000
+        // An expiry we can't parse means "refresh before use", not "valid for another
+        // hour": trusting an undated token sends dead bearers and hides the real failure.
+        const cliExpiresAt = normalizeExpiresAt(data.expires_at ?? data.expiresAt)
 
         let usedCount = 0
         let limitCount = 0
@@ -160,13 +179,24 @@ export async function syncFromKiroCli() {
 
         const id = createDeterministicAccountId(resolvedEmail, authMethod, clientId, profileArn)
         const existingById = all.find((a) => a.id === id)
+        // A stored row only counts as current if it carries the same client
+        // registration kiro-cli holds now; an older one (e.g. imported from the legacy
+        // Q CLI rows) refreshes with "invalid_client: Client is expired" forever.
+        const sameRegistration =
+          !!existingById &&
+          (existingById.client_id || null) === (clientId || null) &&
+          (existingById.client_secret || null) === (clientSecret || null)
         if (
           existingById &&
           existingById.is_healthy === 1 &&
           existingById.expires_at >= cliExpiresAt &&
-          existingById.expires_at > Date.now()
-        )
+          existingById.expires_at > Date.now() &&
+          existingById.oidc_region === oidcRegion &&
+          sameRegistration
+        ) {
+          logger.debug('Kiro CLI sync: stored account is current; skipping', { id })
           continue
+        }
 
         if (usageOk) {
           const placeholderEmail = makePlaceholderEmail(

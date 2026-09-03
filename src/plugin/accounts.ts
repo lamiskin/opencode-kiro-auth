@@ -218,10 +218,12 @@ export class AccountManager {
       acc.expiresAt = auth.expires
       acc.lastUsed = Date.now()
       if (auth.email) acc.email = auth.email
+      if (auth.oidcRegion) acc.oidcRegion = auth.oidcRegion
       const p = decodeRefreshToken(auth.refresh)
       acc.refreshToken = p.refreshToken
       if (p.profileArn) acc.profileArn = p.profileArn
       if (p.clientId) acc.clientId = p.clientId
+      if (p.clientSecret) acc.clientSecret = p.clientSecret
       acc.failCount = 0
       acc.isHealthy = true
       delete acc.unhealthyReason

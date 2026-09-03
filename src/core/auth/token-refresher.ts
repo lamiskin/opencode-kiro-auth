@@ -87,17 +87,44 @@ export class TokenRefresher {
 
     this.repository.invalidateCache()
     const accounts = await this.repository.findAll()
-    const stillAcc = accounts.find((a: ManagedAccount) => a.id === account.id)
+    const synced = accounts.find((a: ManagedAccount) => a.id === account.id)
 
+    // IdC refresh tokens are single-use: if kiro-cli refreshed behind our back, the
+    // token we just tried is dead but the one it stored is live. The same goes for
+    // the client registration: a stale client_id/secret fails with "Client is
+    // expired" no matter how fresh the refresh token is. Adopt the synced
+    // credentials into the in-memory account (the request loop re-selects from
+    // memory, and a later save would otherwise clobber the DB row with our stale
+    // values), then retry the refresh with them before giving up on the account.
     if (
-      stillAcc &&
-      !accessTokenExpired(
-        this.accountManager.toAuthDetails(stillAcc),
-        this.config.token_expiry_buffer_ms
-      )
+      synced &&
+      (synced.refreshToken !== account.refreshToken ||
+        synced.accessToken !== account.accessToken ||
+        synced.clientId !== account.clientId ||
+        synced.clientSecret !== account.clientSecret)
     ) {
-      showToast('Credentials recovered from Kiro CLI sync.', 'info')
-      return { account: stillAcc, shouldContinue: true }
+      const syncedAuth = this.accountManager.toAuthDetails(synced)
+      this.accountManager.updateFromAuth(account, syncedAuth)
+
+      if (!accessTokenExpired(syncedAuth, this.config.token_expiry_buffer_ms)) {
+        showToast('Credentials recovered from Kiro CLI sync.', 'info')
+        return { account, shouldContinue: true }
+      }
+
+      try {
+        const newAuth = await refreshAccessToken(syncedAuth)
+        this.accountManager.updateFromAuth(account, newAuth)
+        await this.repository.save(account)
+        logger.debug('Refreshed with credentials recovered from Kiro CLI sync')
+        return { account, shouldContinue: true }
+      } catch (e: any) {
+        logger.error('Token refresh with synced credentials failed', {
+          email: account.email,
+          code: e instanceof KiroTokenRefreshError ? e.code : undefined,
+          message: e instanceof Error ? e.message : String(e)
+        })
+        error = e
+      }
     }
 
     if (
