@@ -1,3 +1,4 @@
+import { isOpenAIModel } from './effort.js'
 import { EFFORT_LEVELS, supportsEffort, supportsXHighEffort, THINKING_BUDGETS } from './effort.js'
 import { resolveKiroModel } from './models.js'
 
@@ -12,6 +13,7 @@ const MULTIMODAL: Modalities = { input: ['text', 'image', 'pdf'], output: ['text
 
 const CONTEXT_200K = { context: 200000, output: 64000 }
 const CONTEXT_1M = { context: 1000000, output: 64000 }
+const CONTEXT_272K = { context: 272000, output: 128000 }
 
 interface ModelSpec {
   /** Display name, without the credit multiplier suffix. */
@@ -30,15 +32,10 @@ interface ModelSpec {
 
 /**
  * Models Kiro exposes, keyed by the OpenCode-facing model ID.
- *
- * Anthropic and open-weight models only. Kiro's GPT-5.6 tiers are deliberately
- * absent: they configure reasoning through `reasoning.effort` / `reasoning.mode`
- * rather than `output_config.effort`, so they need their own request path.
+ * Includes Claude, open-weight, and GPT-5.6 (OpenAI) models.
  */
 const MODEL_SPECS: Record<string, ModelSpec> = {
   auto: { name: 'Auto', rate: '1.0x', limit: CONTEXT_200K, modalities: MULTIMODAL },
-
-  // Claude Sonnet
   'claude-sonnet-4': {
     name: 'Claude Sonnet 4.0',
     rate: '1.3x',
@@ -112,46 +109,78 @@ const MODEL_SPECS: Record<string, ModelSpec> = {
     thinking: true
   },
 
-  // Open weight models
-  'deepseek-3.2': {
-    name: 'DeepSeek 3.2',
-    rate: '0.25x',
-    limit: { context: 128000, output: 64000 },
-    modalities: TEXT_ONLY
-  },
-  'glm-5': { name: 'GLM-5', rate: '0.5x', limit: CONTEXT_200K, modalities: TEXT_ONLY },
-  'minimax-m2.5': {
-    name: 'MiniMax M2.5',
-    rate: '0.25x',
-    limit: { context: 196000, output: 64000 },
-    modalities: TEXT_ONLY
-  },
-  'minimax-m2.1': {
-    name: 'MiniMax M2.1',
-    rate: '0.15x',
-    limit: { context: 196000, output: 64000 },
-    modalities: TEXT_ONLY
-  },
-  'qwen3-coder-next': {
-    name: 'Qwen3 Coder Next',
-    rate: '0.05x',
-    limit: { context: 256000, output: 64000 },
-    modalities: TEXT_ONLY
-  }
+   // Open weight models
+   'deepseek-3.2': {
+     name: 'DeepSeek 3.2',
+     rate: '0.25x',
+     limit: { context: 128000, output: 64000 },
+     modalities: TEXT_ONLY,
+     thinking: true
+   },
+   'glm-5': { name: 'GLM-5', rate: '0.5x', limit: CONTEXT_200K, modalities: TEXT_ONLY },
+   'minimax-m2.5': {
+     name: 'MiniMax M2.5',
+     rate: '0.25x',
+     limit: { context: 196000, output: 64000 },
+     modalities: TEXT_ONLY,
+     thinking: true
+   },
+   'minimax-m2.1': {
+     name: 'MiniMax M2.1',
+     rate: '0.15x',
+     limit: { context: 196000, output: 64000 },
+     modalities: TEXT_ONLY,
+     thinking: true
+   },
+    'qwen3-coder-next': {
+      name: 'Qwen3 Coder Next',
+      rate: '0.05x',
+      limit: { context: 256000, output: 64000 },
+      modalities: TEXT_ONLY
+    },
+
+   // GPT-5.6 (OpenAI)
+   'gpt-5.6-sol': {
+     name: 'GPT-5.6 Sol',
+     rate: '2.4x',
+     limit: CONTEXT_272K,
+     modalities: MULTIMODAL,
+     thinking: true
+   },
+   'gpt-5.6-terra': {
+     name: 'GPT-5.6 Terra',
+     rate: '1.0x',
+     limit: CONTEXT_272K,
+     modalities: MULTIMODAL,
+     thinking: true
+   },
+   'gpt-5.6-luna': {
+     name: 'GPT-5.6 Luna',
+     rate: '0.1x',
+     limit: CONTEXT_272K,
+     modalities: MULTIMODAL,
+     thinking: true
+   }
 }
 
 /**
  * Build the thinking variants a model supports.
  *
- * Levels come from the model's own effort capabilities, so xhigh only appears on
- * models that accept it and the budgets stay in step with budgetToEffort.
+ * For Claude and GPT-5.6 models, this produces `reasoning.effort` or `thinkingConfig.thinkingBudget` structure.
+ * For other open-weight models, this produces `thinkingConfig.thinkingBudget` structure.
  */
 function buildVariants(kiroModel: string): Record<string, unknown> {
   const variants: Record<string, unknown> = {}
 
-  for (const level of EFFORT_LEVELS) {
-    if (level === 'xhigh' && !supportsXHighEffort(kiroModel)) continue
-    variants[level] = { thinkingConfig: { thinkingBudget: THINKING_BUDGETS[level] } }
+  if (isOpenAIModel(kiroModel)) {
+    for (const level of EFFORT_LEVELS) {
+      variants[level] = { reasoning: { effort: level } }
+    }
+  } else {
+    for (const level of EFFORT_LEVELS) {
+      if (level === 'xhigh' && !supportsXHighEffort(kiroModel)) continue
+      variants[level] = { thinkingConfig: { thinkingBudget: THINKING_BUDGETS[level] } }
+    }
   }
 
   return variants

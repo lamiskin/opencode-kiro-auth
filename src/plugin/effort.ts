@@ -1,5 +1,9 @@
 import type { Effort } from './config/schema'
 
+export function isOpenAIModel(kiroModel: string): boolean {
+  return kiroModel.startsWith('gpt-')
+}
+
 /**
  * Effort levels ordered from lowest to highest reasoning depth.
  */
@@ -25,13 +29,20 @@ export const THINKING_BUDGETS: Readonly<Record<Effort, number>> = {
 /**
  * Models that support the 5-value effort enum (including xhigh).
  * Per Kiro's effort docs, this is opus-4.7/4.8/5 and sonnet-5.
+ * Also includes GPT-5.6 and open-weight models that support effort.
  */
 const XHIGH_CAPABLE_MODELS = new Set([
   'claude-opus-4.7',
   'claude-opus-4.8',
   'claude-opus-5',
   'claude-sonnet-5',
-  'claude-sonnet-5-1m'
+  'claude-sonnet-5-1m',
+  'gpt-5.6-sol',
+  'gpt-5.6-terra',
+  'gpt-5.6-luna',
+  'deepseek-3.2',
+  'minimax-m2.5',
+  'minimax-m2.1'
 ])
 
 /**
