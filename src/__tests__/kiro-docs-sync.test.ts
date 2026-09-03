@@ -85,11 +85,19 @@ describe('kiro.dev documentation sync', () => {
     const registry = buildModelRegistry() as Record<string, any>
 
     for (const docModel of KIRO_DOCS_MODELS) {
-      const hasThinkingVariant = registry[`${docModel.id}-thinking`] !== undefined
-      expect(
-        hasThinkingVariant,
-        `Thinking variant presence mismatch for ${docModel.id}: expected ${docModel.hasThinking}, got ${hasThinkingVariant}`
-      ).toBe(docModel.hasThinking)
+      if (docModel.isOpenAI) {
+        const hasReasoning = registry[docModel.id]?.reasoning === true
+        expect(
+          hasReasoning,
+          `GPT model ${docModel.id} should have reasoning: true on base model, got ${hasReasoning}`
+        ).toBe(true)
+      } else {
+        const hasThinkingVariant = registry[`${docModel.id}-thinking`] !== undefined
+        expect(
+          hasThinkingVariant,
+          `Thinking variant presence mismatch for ${docModel.id}: expected ${docModel.hasThinking}, got ${hasThinkingVariant}`
+        ).toBe(docModel.hasThinking)
+      }
     }
   })
 

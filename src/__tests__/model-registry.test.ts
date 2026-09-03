@@ -40,18 +40,16 @@ describe('model registry', () => {
     }
   })
 
-  test('advertises a thinking companion for each effort-capable model', () => {
-    // All models that support effort get a thinking companion, including Claude, GPT-5.6, and open-weight models
-    const allExpectedThinking = [
+  test('advertises reasoning variants for each effort-capable model', () => {
+    // Claude models get -thinking companion entries
+    // GPT-5.6 models have reasoning=true on base entry with no -thinking variants
+    const expectedThinking = [
       ...CLAUDE_THINKING_IDS,
-      'gpt-5.6-sol-thinking',
-      'gpt-5.6-terra-thinking',
-      'gpt-5.6-luna-thinking',
       'deepseek-3.2-thinking',
       'minimax-m2.5-thinking',
       'minimax-m2.1-thinking'
     ]
-    expect(thinkingIDs.sort()).toEqual(allExpectedThinking.sort())
+    expect(thinkingIDs.sort()).toEqual(expectedThinking.sort())
   })
 
   describe('reasoning capability flags', () => {
@@ -68,6 +66,8 @@ describe('model registry', () => {
     test('non-thinking models declare neither', () => {
       for (const [id, model] of Object.entries(registry)) {
         if (id.endsWith('-thinking')) continue
+        // Native reasoning models (GPT-5.6) have reasoning=true on base entry
+        if (model.reasoning === true) continue
         expect(model.reasoning).toBeUndefined()
         expect(model.interleaved).toBeUndefined()
       }

@@ -28,6 +28,11 @@ interface ModelSpec {
    * capabilities in effort.ts.
    */
   thinking?: boolean
+  /**
+   * Native reasoning model (GPT-5.6). These always reason; you control effort level.
+   * The base model advertises `reasoning: true` with effort variants.
+   */
+  reasoning?: boolean
 }
 
 /**
@@ -139,47 +144,48 @@ const MODEL_SPECS: Record<string, ModelSpec> = {
       modalities: TEXT_ONLY
     },
 
-   // GPT-5.6 (OpenAI)
-   'gpt-5.6-sol': {
-     name: 'GPT-5.6 Sol',
-     rate: '2.4x',
-     limit: CONTEXT_272K,
-     modalities: MULTIMODAL,
-     thinking: true
-   },
-   'gpt-5.6-terra': {
-     name: 'GPT-5.6 Terra',
-     rate: '1.0x',
-     limit: CONTEXT_272K,
-     modalities: MULTIMODAL,
-     thinking: true
-   },
-   'gpt-5.6-luna': {
-     name: 'GPT-5.6 Luna',
-     rate: '0.1x',
-     limit: CONTEXT_272K,
-     modalities: MULTIMODAL,
-     thinking: true
-   }
+    // GPT-5.6 (OpenAI)
+    'gpt-5.6-sol': {
+      name: 'GPT-5.6 Sol',
+      rate: '2.4x',
+      limit: { context: 272000, output: 64000 },
+      modalities: MULTIMODAL,
+      reasoning: true
+    },
+    'gpt-5.6-terra': {
+      name: 'GPT-5.6 Terra',
+      rate: '1.0x',
+      limit: { context: 272000, output: 64000 },
+      modalities: MULTIMODAL,
+      reasoning: true
+    },
+    'gpt-5.6-luna': {
+      name: 'GPT-5.6 Luna',
+      rate: '0.1x',
+      limit: { context: 272000, output: 64000 },
+      modalities: MULTIMODAL,
+      reasoning: true
+    }
 }
 
 /**
- * Build the thinking variants a model supports.
+ * Build the thinking/variant configuration for a model.
  *
- * For Claude and GPT-5.6 models, this produces `reasoning.effort` or `thinkingConfig.thinkingBudget` structure.
- * For other open-weight models, this produces `thinkingConfig.thinkingBudget` structure.
+ * GPT-5.6 models use native `reasoning.effort` structure.
+ * Claude and open-weight models use `thinkingConfig.thinkingBudget` structure.
  */
-function buildVariants(kiroModel: string): Record<string, unknown> {
+function buildVariants(kiroModel: string, isOpenAI = false): Record<string, unknown> {
   const variants: Record<string, unknown> = {}
 
-  if (isOpenAIModel(kiroModel)) {
-    for (const level of EFFORT_LEVELS) {
+  const levels = isOpenAI ? ['low', 'medium', 'high', 'xhigh' as const] : EFFORT_LEVELS
+
+  for (const level of levels) {
+    if (isOpenAI) {
       variants[level] = { reasoning: { effort: level } }
-    }
-  } else {
-    for (const level of EFFORT_LEVELS) {
+    } else {
+      const budget = THINKING_BUDGETS[level as keyof typeof THINKING_BUDGETS]
       if (level === 'xhigh' && !supportsXHighEffort(kiroModel)) continue
-      variants[level] = { thinkingConfig: { thinkingBudget: THINKING_BUDGETS[level] } }
+      variants[level] = { thinkingConfig: { thinkingBudget: budget } }
     }
   }
 
@@ -203,6 +209,20 @@ export function buildModelRegistry(): Record<string, unknown> {
       name: `${spec.name} (${spec.rate})`,
       limit: spec.limit,
       modalities: spec.modalities
+    }
+
+    if (spec.reasoning) {
+      const kiroModel = resolveKiroModel(modelID)
+      const variants = buildVariants(kiroModel, true)
+      models[modelID] = {
+        name: `${spec.name} (${spec.rate})`,
+        limit: spec.limit,
+        modalities: spec.modalities,
+        reasoning: true,
+        interleaved: { field: 'reasoning_content' },
+        variants
+      }
+      continue
     }
 
     if (!spec.thinking) continue
