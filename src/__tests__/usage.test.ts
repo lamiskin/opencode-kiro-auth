@@ -1,6 +1,5 @@
 import { describe, expect, mock, test } from 'bun:test'
 import type { KiroAuthDetails, ManagedAccount } from '../plugin/types.js'
-import { fetchUsageLimits, updateAccountQuota } from '../plugin/usage.js'
 
 function makeAuth(overrides: Partial<KiroAuthDetails> = {}): KiroAuthDetails {
   return {
@@ -33,7 +32,7 @@ function makeAccount(overrides: Partial<ManagedAccount> = {}): ManagedAccount {
   }
 }
 
-// ── updateAccountQuota ────────────────────────────────────────────────────────
+const { updateAccountQuota } = await import('../plugin/usage.js')
 
 describe('updateAccountQuota', () => {
   test('updates usedCount and limitCount on account', () => {
@@ -74,7 +73,18 @@ describe('updateAccountQuota', () => {
   })
 })
 
-// ── fetchUsageLimits ──────────────────────────────────────────────────────────
+mock.module('../plugin/usage.js', () => ({
+  fetchUsageLimits: async () => ({ usedCount: 1, limitCount: 100, email: 'user@corp.example' })
+}))
+mock.module('../plugin/logger.js', () => ({
+  debug: () => {},
+  error: () => {},
+  log: () => {},
+  warn: () => {}
+}))
+
+const realUsageModule = '../plugin/usage.js?real'
+const { fetchUsageLimits: realFetchUsageLimits } = await import(realUsageModule)
 
 describe('fetchUsageLimits', () => {
   test('returns usedCount and limitCount from usageBreakdownList', async () => {
@@ -97,9 +107,9 @@ describe('fetchUsageLimits', () => {
     const original = globalThis.fetch
     globalThis.fetch = mockFetch as any
     try {
-      const result = await fetchUsageLimits(makeAuth())
-      expect(result.usedCount).toBe(150) // 100 + 50
-      expect(result.limitCount).toBe(1500) // 1000 + 500
+      const result = await realFetchUsageLimits(makeAuth())
+      expect(result.usedCount).toBe(150)
+      expect(result.limitCount).toBe(1500)
       expect(result.email).toBe('test@example.com')
     } finally {
       globalThis.fetch = original
@@ -107,8 +117,6 @@ describe('fetchUsageLimits', () => {
   })
 
   test('prefers WithPrecision fields (matches Kiro dashboard credits)', async () => {
-    // Mirrors the real Kiro Power getUsageLimits response: the integer
-    // currentUsage is rounded, the dashboard shows currentUsageWithPrecision.
     const mockFetch = mock(
       async () =>
         new Response(
@@ -132,7 +140,7 @@ describe('fetchUsageLimits', () => {
     const original = globalThis.fetch
     globalThis.fetch = mockFetch as any
     try {
-      const result = await fetchUsageLimits(makeAuth())
+      const result = await realFetchUsageLimits(makeAuth())
       expect(result.usedCount).toBe(70.45)
       expect(result.limitCount).toBe(10000)
     } finally {
@@ -154,7 +162,7 @@ describe('fetchUsageLimits', () => {
     const original = globalThis.fetch
     globalThis.fetch = mockFetch as any
     try {
-      const result = await fetchUsageLimits(makeAuth())
+      const result = await realFetchUsageLimits(makeAuth())
       expect(result.usedCount).toBe(50)
       expect(result.limitCount).toBe(500)
     } finally {
@@ -174,7 +182,7 @@ describe('fetchUsageLimits', () => {
     const original = globalThis.fetch
     globalThis.fetch = mockFetch as any
     try {
-      const result = await fetchUsageLimits(makeAuth())
+      const result = await realFetchUsageLimits(makeAuth())
       expect(callCount).toBeGreaterThanOrEqual(3)
       expect(result.usedCount).toBe(0)
     } finally {
@@ -187,7 +195,7 @@ describe('fetchUsageLimits', () => {
     const original = globalThis.fetch
     globalThis.fetch = mockFetch as any
     try {
-      await expect(fetchUsageLimits(makeAuth())).rejects.toThrow()
+      await expect(realFetchUsageLimits(makeAuth())).rejects.toThrow()
     } finally {
       globalThis.fetch = original
     }
@@ -205,8 +213,7 @@ describe('fetchUsageLimits', () => {
     const original = globalThis.fetch
     globalThis.fetch = mockFetch as any
     try {
-      await expect(fetchUsageLimits(makeAuth())).rejects.toThrow(/429|Throttling/i)
-      // Old behaviour would call all 4 attempts. New behaviour stops at 1.
+      await expect(realFetchUsageLimits(makeAuth())).rejects.toThrow(/429|Throttling/i)
       expect(callCount).toBe(1)
     } finally {
       globalThis.fetch = original
@@ -222,7 +229,7 @@ describe('fetchUsageLimits', () => {
     const original = globalThis.fetch
     globalThis.fetch = mockFetch as any
     try {
-      await expect(fetchUsageLimits(makeAuth())).rejects.toThrow(/401/)
+      await expect(realFetchUsageLimits(makeAuth())).rejects.toThrow(/401/)
       expect(callCount).toBe(1)
     } finally {
       globalThis.fetch = original
@@ -238,7 +245,7 @@ describe('fetchUsageLimits', () => {
     const original = globalThis.fetch
     globalThis.fetch = mockFetch as any
     try {
-      await expect(fetchUsageLimits(makeAuth())).rejects.toThrow(/ECONNRESET/)
+      await expect(realFetchUsageLimits(makeAuth())).rejects.toThrow(/ECONNRESET/)
       expect(callCount).toBe(1)
     } finally {
       globalThis.fetch = original
