@@ -1,12 +1,14 @@
 import { describe, expect, test } from 'bun:test'
+import { supportsEffort, supportsXHighEffort } from '../plugin/effort.js'
 import { buildModelRegistry } from '../plugin/model-registry.js'
 import { resolveKiroModel } from '../plugin/models.js'
-import { supportsEffort, supportsXHighEffort } from '../plugin/effort.js'
 
 const KIRO_DOCS_MODELS = [
-  { id: 'gpt-5.6-sol', context: 272000, rate: '2.4x', hasThinking: true, isOpenAI: true },
-  { id: 'gpt-5.6-terra', context: 272000, rate: '1.0x', hasThinking: true, isOpenAI: true },
-  { id: 'gpt-5.6-luna', context: 272000, rate: '0.1x', hasThinking: true, isOpenAI: true },
+  // GPT-5.6 uses two-tier pricing: short-context (≤272K) rates shown below.
+  // Long-context (>272K) is billed at 2x these rates.
+  { id: 'gpt-5.6-sol', context: 1000000, rate: '4.4x', hasThinking: true, isOpenAI: true },
+  { id: 'gpt-5.6-terra', context: 1000000, rate: '2.2x', hasThinking: true, isOpenAI: true },
+  { id: 'gpt-5.6-luna', context: 1000000, rate: '1.1x', hasThinking: true, isOpenAI: true },
   { id: 'claude-opus-5', context: 1000000, rate: '2.2x', hasThinking: true, isOpenAI: false },
   { id: 'claude-opus-4-8', context: 1000000, rate: '2.2x', hasThinking: true, isOpenAI: false },
   { id: 'claude-opus-4-7', context: 1000000, rate: '2.2x', hasThinking: true, isOpenAI: false },
@@ -29,8 +31,10 @@ describe('kiro.dev documentation sync', () => {
   test('all documented models are present in the registry', () => {
     const registry = buildModelRegistry() as Record<string, any>
 
-    const registryModelIDs = new Set(Object.keys(registry).filter(id => !id.endsWith('-thinking')))
-    const documentedIDs = new Set(KIRO_DOCS_MODELS.map(m => m.id))
+    const registryModelIDs = new Set(
+      Object.keys(registry).filter((id) => !id.endsWith('-thinking'))
+    )
+    const documentedIDs = new Set(KIRO_DOCS_MODELS.map((m) => m.id))
 
     const missingFromRegistry: string[] = []
     const extraInRegistry: string[] = []
@@ -47,8 +51,14 @@ describe('kiro.dev documentation sync', () => {
       }
     }
 
-    expect(missingFromRegistry, `Models missing from registry: ${missingFromRegistry.join(', ')}`).toEqual([])
-    expect(extraInRegistry, `Models in registry but not in docs: ${extraInRegistry.join(', ')}`).toEqual([])
+    expect(
+      missingFromRegistry,
+      `Models missing from registry: ${missingFromRegistry.join(', ')}`
+    ).toEqual([])
+    expect(
+      extraInRegistry,
+      `Models in registry but not in docs: ${extraInRegistry.join(', ')}`
+    ).toEqual([])
   })
 
   test('registry context limits match documented values', () => {
@@ -129,10 +139,9 @@ describe('kiro.dev documentation sync', () => {
     ]
 
     for (const modelId of expectedXHighModels) {
-      expect(
-        supportsXHighEffort(modelId),
-        `Model ${modelId} should support xhigh effort`
-      ).toBe(true)
+      expect(supportsXHighEffort(modelId), `Model ${modelId} should support xhigh effort`).toBe(
+        true
+      )
     }
   })
 

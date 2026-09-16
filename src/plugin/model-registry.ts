@@ -1,5 +1,5 @@
-import { isOpenAIModel } from './effort.js'
 import { EFFORT_LEVELS, supportsEffort, supportsXHighEffort, THINKING_BUDGETS } from './effort.js'
+import { getModelRate, initializeModelCatalog, refreshModelCatalog } from './model-catalog.js'
 import { resolveKiroModel } from './models.js'
 
 type Modalities = {
@@ -15,12 +15,16 @@ const CONTEXT_200K = { context: 200000, output: 64000 }
 const CONTEXT_1M = { context: 1000000, output: 64000 }
 const CONTEXT_272K = { context: 272000, output: 128000 }
 
-interface ModelSpec {
+/**
+ * Static model capabilities that don't change dynamically.
+ * Credit multipliers and context windows are fetched from the model catalog.
+ */
+interface ModelCapabilities {
   /** Display name, without the credit multiplier suffix. */
   name: string
-  /** Kiro credit multiplier, rendered into the display name. */
-  rate: string
+  /** Default context/output limits. May be overridden by catalog. */
   limit: { context: number; output: number }
+  /** Input/output modalities supported. */
   modalities: Modalities
   /**
    * Emit a companion `-thinking` entry. Only set for Claude models that accept
@@ -36,34 +40,31 @@ interface ModelSpec {
 }
 
 /**
- * Models Kiro exposes, keyed by the OpenCode-facing model ID.
+ * Static model capabilities keyed by the OpenCode-facing model ID.
+ * Credit multipliers are fetched dynamically from the model catalog.
  * Includes Claude, open-weight, and GPT-5.6 (OpenAI) models.
  */
-const MODEL_SPECS: Record<string, ModelSpec> = {
-  auto: { name: 'Auto', rate: '1.0x', limit: CONTEXT_200K, modalities: MULTIMODAL },
+const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
+  auto: { name: 'Auto', limit: CONTEXT_200K, modalities: MULTIMODAL },
   'claude-sonnet-4': {
     name: 'Claude Sonnet 4.0',
-    rate: '1.3x',
     limit: CONTEXT_200K,
     modalities: MULTIMODAL
   },
   'claude-sonnet-4-5': {
     name: 'Claude Sonnet 4.5',
-    rate: '1.3x',
     limit: CONTEXT_200K,
     modalities: MULTIMODAL,
     thinking: true
   },
   'claude-sonnet-4-6': {
     name: 'Claude Sonnet 4.6',
-    rate: '1.3x',
     limit: CONTEXT_1M,
     modalities: MULTIMODAL,
     thinking: true
   },
   'claude-sonnet-5': {
     name: 'Claude Sonnet 5',
-    rate: '1.3x',
     limit: CONTEXT_1M,
     modalities: MULTIMODAL,
     thinking: true
@@ -72,7 +73,6 @@ const MODEL_SPECS: Record<string, ModelSpec> = {
   // Claude Haiku
   'claude-haiku-4-5': {
     name: 'Claude Haiku 4.5',
-    rate: '0.4x',
     limit: CONTEXT_200K,
     modalities: TEXT_IMAGE
   },
@@ -80,92 +80,80 @@ const MODEL_SPECS: Record<string, ModelSpec> = {
   // Claude Opus
   'claude-opus-4-5': {
     name: 'Claude Opus 4.5',
-    rate: '2.2x',
     limit: CONTEXT_200K,
     modalities: MULTIMODAL,
     thinking: true
   },
   'claude-opus-4-6': {
     name: 'Claude Opus 4.6',
-    rate: '2.2x',
     limit: CONTEXT_1M,
     modalities: MULTIMODAL,
     thinking: true
   },
   'claude-opus-4-7': {
     name: 'Claude Opus 4.7',
-    rate: '2.2x',
     limit: CONTEXT_1M,
     modalities: MULTIMODAL,
     thinking: true
   },
   'claude-opus-4-8': {
     name: 'Claude Opus 4.8',
-    rate: '2.2x',
     limit: CONTEXT_1M,
     modalities: MULTIMODAL,
     thinking: true
   },
   'claude-opus-5': {
     name: 'Claude Opus 5',
-    rate: '2.2x',
     limit: CONTEXT_1M,
     modalities: MULTIMODAL,
     thinking: true
   },
 
-   // Open weight models
-   'deepseek-3.2': {
-     name: 'DeepSeek 3.2',
-     rate: '0.25x',
-     limit: { context: 128000, output: 64000 },
-     modalities: TEXT_ONLY,
-     thinking: true
-   },
-   'glm-5': { name: 'GLM-5', rate: '0.5x', limit: CONTEXT_200K, modalities: TEXT_ONLY },
-   'minimax-m2.5': {
-     name: 'MiniMax M2.5',
-     rate: '0.25x',
-     limit: { context: 196000, output: 64000 },
-     modalities: TEXT_ONLY,
-     thinking: true
-   },
-   'minimax-m2.1': {
-     name: 'MiniMax M2.1',
-     rate: '0.15x',
-     limit: { context: 196000, output: 64000 },
-     modalities: TEXT_ONLY,
-     thinking: true
-   },
-    'qwen3-coder-next': {
-      name: 'Qwen3 Coder Next',
-      rate: '0.05x',
-      limit: { context: 256000, output: 64000 },
-      modalities: TEXT_ONLY
-    },
+  // Open weight models
+  'deepseek-3.2': {
+    name: 'DeepSeek 3.2',
+    limit: { context: 128000, output: 64000 },
+    modalities: TEXT_ONLY,
+    thinking: true
+  },
+  'glm-5': { name: 'GLM-5', limit: CONTEXT_200K, modalities: TEXT_ONLY },
+  'minimax-m2.5': {
+    name: 'MiniMax M2.5',
+    limit: { context: 196000, output: 64000 },
+    modalities: TEXT_ONLY,
+    thinking: true
+  },
+  'minimax-m2.1': {
+    name: 'MiniMax M2.1',
+    limit: { context: 196000, output: 64000 },
+    modalities: TEXT_ONLY,
+    thinking: true
+  },
+  'qwen3-coder-next': {
+    name: 'Qwen3 Coder Next',
+    limit: { context: 256000, output: 64000 },
+    modalities: TEXT_ONLY
+  },
 
-    // GPT-5.6 (OpenAI)
-    'gpt-5.6-sol': {
-      name: 'GPT-5.6 Sol',
-      rate: '2.4x',
-      limit: { context: 272000, output: 64000 },
-      modalities: MULTIMODAL,
-      reasoning: true
-    },
-    'gpt-5.6-terra': {
-      name: 'GPT-5.6 Terra',
-      rate: '1.0x',
-      limit: { context: 272000, output: 64000 },
-      modalities: MULTIMODAL,
-      reasoning: true
-    },
-    'gpt-5.6-luna': {
-      name: 'GPT-5.6 Luna',
-      rate: '0.1x',
-      limit: { context: 272000, output: 64000 },
-      modalities: MULTIMODAL,
-      reasoning: true
-    }
+  // GPT-5.6 (OpenAI) - 1M context window as of Sep 2026
+  'gpt-5.6-sol': {
+    name: 'GPT-5.6 Sol',
+    limit: CONTEXT_1M,
+    modalities: MULTIMODAL,
+    reasoning: true
+  },
+  'gpt-5.6-terra': {
+    name: 'GPT-5.6 Terra',
+    limit: CONTEXT_1M,
+    modalities: MULTIMODAL,
+    reasoning: true
+  },
+  'gpt-5.6-luna': {
+    name: 'GPT-5.6 Luna',
+    limit: CONTEXT_1M,
+    modalities: MULTIMODAL,
+    reasoning: true
+  }
 }
 
 /**
@@ -200,24 +188,29 @@ function buildVariants(kiroModel: string, isOpenAI = false): Record<string, unkn
  * that reasoning arrives in the non-standard `reasoning_content` delta this
  * plugin emits (see streaming/openai-converter.ts). Without them OpenCode
  * silently drops every reasoning chunk and no thinking block is rendered.
+ *
+ * Credit multipliers are fetched dynamically from the model catalog.
  */
 export function buildModelRegistry(): Record<string, unknown> {
   const models: Record<string, unknown> = {}
 
-  for (const [modelID, spec] of Object.entries(MODEL_SPECS)) {
+  for (const [modelID, caps] of Object.entries(MODEL_CAPABILITIES)) {
+    // Get the dynamic credit multiplier from the catalog
+    const rate = getModelRate(modelID)
+
     models[modelID] = {
-      name: `${spec.name} (${spec.rate})`,
-      limit: spec.limit,
-      modalities: spec.modalities
+      name: `${caps.name} (${rate})`,
+      limit: caps.limit,
+      modalities: caps.modalities
     }
 
-    if (spec.reasoning) {
+    if (caps.reasoning) {
       const kiroModel = resolveKiroModel(modelID)
       const variants = buildVariants(kiroModel, true)
       models[modelID] = {
-        name: `${spec.name} (${spec.rate})`,
-        limit: spec.limit,
-        modalities: spec.modalities,
+        name: `${caps.name} (${rate})`,
+        limit: caps.limit,
+        modalities: caps.modalities,
         reasoning: true,
         interleaved: { field: 'reasoning_content' },
         variants
@@ -225,7 +218,7 @@ export function buildModelRegistry(): Record<string, unknown> {
       continue
     }
 
-    if (!spec.thinking) continue
+    if (!caps.thinking) continue
 
     // Effort capability is keyed on the resolved Kiro model ID, not the
     // OpenCode-facing one (e.g. claude-opus-5 vs claude-opus-4-6).
@@ -233,9 +226,9 @@ export function buildModelRegistry(): Record<string, unknown> {
     if (!supportsEffort(kiroModel)) continue
 
     models[`${modelID}-thinking`] = {
-      name: `${spec.name} Thinking (${spec.rate})`,
-      limit: spec.limit,
-      modalities: spec.modalities,
+      name: `${caps.name} Thinking (${rate})`,
+      limit: caps.limit,
+      modalities: caps.modalities,
       reasoning: true,
       interleaved: { field: 'reasoning_content' },
       variants: buildVariants(kiroModel)
@@ -243,4 +236,20 @@ export function buildModelRegistry(): Record<string, unknown> {
   }
 
   return models
+}
+
+/**
+ * Initialize the model registry with bundled data.
+ * Call this at plugin startup to ensure data is available immediately.
+ */
+export function initializeRegistry(): void {
+  initializeModelCatalog()
+}
+
+/**
+ * Refresh the model catalog from the remote source.
+ * Call this after authentication is established.
+ */
+export async function refreshRegistry(): Promise<void> {
+  await refreshModelCatalog()
 }

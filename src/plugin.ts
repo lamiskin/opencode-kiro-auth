@@ -8,7 +8,7 @@ import { AccountRepository } from './infrastructure/database/account-repository.
 import { AccountManager } from './plugin/accounts.js'
 import { bootstrapAuthIfNeeded } from './plugin/auth-bootstrap.js'
 import { loadConfig } from './plugin/config/index.js'
-import { buildModelRegistry } from './plugin/model-registry.js'
+import { buildModelRegistry, initializeRegistry, refreshRegistry } from './plugin/model-registry.js'
 import { syncFromKiroCli } from './plugin/sync/kiro-cli.js'
 import {
   fetchUsageLimits,
@@ -55,13 +55,13 @@ export async function fetchUsageReport(
   repository: AccountRepository
 ): Promise<string> {
   const refresher = new TokenRefresher(config, accountManager, syncFromKiroCli, repository)
-  const entries = [] as Array<{
+  const entries: Array<{
     email: string
     used?: number
     limit?: number
     pct?: number
     error?: string
-  }>
+  }> = []
 
   for (const account of accountManager.getAccounts()) {
     try {
@@ -126,6 +126,7 @@ function buildTools(
       }
     })
   })
+
   return tools
 }
 
@@ -153,6 +154,10 @@ export const createKiroPlugin =
       config.default_region || 'us-east-1'
     )
 
+    // Initialize model registry with bundled fallback data immediately.
+    // This ensures credit multipliers are available before the config hook runs.
+    initializeRegistry()
+
     return {
       config: async (input: any) => {
         // Ensure there's an auth entry so OpenCode calls the loader on startup.
@@ -179,6 +184,11 @@ export const createKiroPlugin =
         loader: async (getAuth: any) => {
           await getAuth()
           await authHandler.initialize(showToast as any)
+
+          // Refresh model catalog from remote source after auth is established.
+          // This updates credit multipliers with the latest data from kiro.dev.
+          // Failures are handled gracefully by the catalog's bundled fallback.
+          refreshRegistry().catch(() => {})
 
           return {
             apiKey: '',
