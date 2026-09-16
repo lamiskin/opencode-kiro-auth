@@ -1,5 +1,5 @@
 {
-  "name": "@zhafron/opencode-kiro-auth",
+  "name": "@lamiskin/opencode-kiro-auth-dev",
   "version": "2.0.0",
   "description": "OpenCode plugin for AWS Kiro (CodeWhisperer) providing access to Claude models",
   "type": "module",
