@@ -1,4 +1,5 @@
 import { restoreToolName } from '../../infrastructure/transformers/tool-transformer.js'
+import { debug } from '../../plugin/logger.js'
 import { parseEventStream } from '../../plugin/response'
 import { transformKiroStream } from '../../plugin/streaming/index.js'
 import { transformSdkStream } from '../../plugin/streaming/sdk-stream-transformer.js'
@@ -180,6 +181,13 @@ export class ResponseHandler {
           if (typeof usage.totalTokens === 'number') {
             totalTokens = usage.totalTokens
           }
+        }
+        if (event.meteringEvent?.usage !== undefined) {
+          const usage = event.meteringEvent.usage
+          const creditsText = `\n\n_Credits Used: ${usage.toFixed(2)}_`
+          content += creditsText
+        } else if (event.meteringEvent) {
+          debug(`Kiro SDK response completed without meteringUsage captured for model=${model}`)
         }
       }
     }

@@ -1,5 +1,6 @@
 import { parseBracketToolCalls } from '../../infrastructure/transformers/tool-call-parser.js'
 import { restoreToolName } from '../../infrastructure/transformers/tool-transformer.js'
+import { debug } from '../logger.js'
 import { getContextWindowSize } from '../models.js'
 import { estimateTokens } from '../response.js'
 import type { ToolNameMap } from '../types.js'
@@ -40,6 +41,7 @@ export async function* transformKiroStream(
   let outputTokens = 0
   let inputTokens = 0
   let contextUsagePercentage: number | null = null
+  let meteringUsage: number | null = null
   const toolCalls: ToolCallState[] = []
   let currentToolCall: ToolCallState | null = null
 
@@ -57,6 +59,8 @@ export async function* transformKiroStream(
       for (const event of events.events) {
         if (event.type === 'contextUsage' && event.data.contextUsagePercentage) {
           contextUsagePercentage = event.data.contextUsagePercentage
+        } else if (event.type === 'meteringEvent' && event.data.usage !== undefined) {
+          meteringUsage = event.data.usage
         } else if (event.type === 'content' && event.data) {
           totalContent += event.data
           textOnlyContent += event.data
@@ -218,6 +222,21 @@ export async function* transformKiroStream(
         }
         streamState.buffer = ''
       }
+    }
+
+    for (const ev of stopBlock(streamState.textBlockIndex, streamState)) {
+      const _c = convertToOpenAI(ev, conversationId, model)
+      if (_c !== null) yield _c
+    }
+
+    if (meteringUsage !== null) {
+      const creditsText = `\n\n_Credits Used: ${meteringUsage.toFixed(2)}_`
+      for (const ev of createTextDeltaEvents(creditsText, streamState)) {
+        const _c = convertToOpenAI(ev, conversationId, model)
+        if (_c !== null) yield _c
+      }
+    } else {
+      debug(`Kiro API response completed without meteringEvent for model=${model} (streaming/cli)`)
     }
 
     for (const ev of stopBlock(streamState.textBlockIndex, streamState)) {

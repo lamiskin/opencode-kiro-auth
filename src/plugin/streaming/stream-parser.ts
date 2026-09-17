@@ -12,6 +12,7 @@ export function parseStreamBuffer(buffer: string): { events: any[]; remaining: s
     const inputStart = remaining.indexOf('{"input":', searchStart)
     const stopStart = remaining.indexOf('{"stop":', searchStart)
     const contextUsageStart = remaining.indexOf('{"contextUsagePercentage":', searchStart)
+    const meteringStart = remaining.indexOf('{"usage":', searchStart)
 
     const candidates = [
       contentStart,
@@ -19,7 +20,8 @@ export function parseStreamBuffer(buffer: string): { events: any[]; remaining: s
       followupStart,
       inputStart,
       stopStart,
-      contextUsageStart
+      contextUsageStart,
+      meteringStart
     ].filter((pos) => pos >= 0)
     if (candidates.length === 0) break
 
@@ -102,6 +104,15 @@ export function parseStreamBuffer(buffer: string): { events: any[]; remaining: s
           type: 'contextUsage',
           data: {
             contextUsagePercentage: parsed.contextUsagePercentage
+          }
+        })
+      } else if (parsed.usage !== undefined) {
+        events.push({
+          type: 'meteringEvent',
+          data: {
+            usage: parsed.usage,
+            unit: parsed.unit,
+            unitPlural: parsed.unitPlural
           }
         })
       }

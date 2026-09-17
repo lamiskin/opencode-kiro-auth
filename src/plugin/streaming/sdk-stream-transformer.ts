@@ -1,5 +1,6 @@
 import { parseBracketToolCalls } from '../../infrastructure/transformers/tool-call-parser.js'
 import { restoreToolName } from '../../infrastructure/transformers/tool-transformer.js'
+import { debug } from '../../plugin/logger.js'
 import { getContextWindowSize } from '../models.js'
 import { estimateTokens } from '../response.js'
 import type { ToolNameMap } from '../types.js'
@@ -45,6 +46,7 @@ export async function* transformSdkStream(
   let totalTokens = 0
   let tokenUsageReceived = false
   let contextUsagePercentage: number | null = null
+  let meteringUsage: number | null = null
   const toolCallFragments = new Map<string, PendingToolCall>()
   const toolCallOrder: string[] = []
 
@@ -207,6 +209,11 @@ export async function* transformSdkStream(
         if (cue.contextUsagePercentage) {
           contextUsagePercentage = cue.contextUsagePercentage
         }
+      } else if (event.meteringEvent) {
+        const me = event.meteringEvent
+        if (me.usage !== undefined) {
+          meteringUsage = me.usage
+        }
       }
     }
 
@@ -238,11 +245,6 @@ export async function* transformSdkStream(
       }
     }
 
-    for (const ev of stopBlock(streamState.textBlockIndex, streamState)) {
-      const _c = convertToOpenAI(ev, conversationId, model)
-      if (_c !== null) yield _c
-    }
-
     const bracketToolCalls = parseBracketToolCalls(totalContent)
     if (bracketToolCalls.length > 0) {
       for (const btc of bracketToolCalls) {
@@ -252,6 +254,21 @@ export async function* transformSdkStream(
           input: typeof btc.input === 'string' ? btc.input : JSON.stringify(btc.input)
         })
       }
+    }
+
+    if (meteringUsage !== null) {
+      const creditsText = `\n\n_Credits Used: ${meteringUsage.toFixed(2)}_`
+      for (const ev of createTextDeltaEvents(creditsText, streamState)) {
+        const _c = convertToOpenAI(ev, conversationId, model)
+        if (_c !== null) yield _c
+      }
+    } else {
+      debug(`Kiro API response completed without meteringEvent for model=${model} (sdk)`)
+    }
+
+    for (const ev of stopBlock(streamState.textBlockIndex, streamState)) {
+      const _c = convertToOpenAI(ev, conversationId, model)
+      if (_c !== null) yield _c
     }
 
     if (toolCalls.length > 0) {

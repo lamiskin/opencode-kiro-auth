@@ -4,6 +4,7 @@ import {
   deduplicateToolCalls,
   parseBracketToolCalls
 } from '../infrastructure/transformers/tool-call-parser.js'
+import { debug } from './logger.js'
 import { getContextWindowSize } from './models.js'
 import { ParsedResponse, ToolCall } from './types'
 
@@ -68,6 +69,13 @@ function parseEventStreamChunk(rawText: string, model?: string): ParsedResponse 
       stopReason = 'tool_use'
     } else if (event.type === 'contextUsage') {
       contextUsagePercentage = event.data.contextUsagePercentage
+    } else if (event.type === 'meteringEvent' && event.data.usage !== undefined) {
+      const creditsText = `\n\n_Credits Used: ${event.data.usage.toFixed(2)}_`
+      content += creditsText
+    } else if (event.type === 'meteringEvent') {
+      debug(
+        `Kiro API response completed without meteringUsage captured for model=${model || 'unknown'}`
+      )
     }
   }
 

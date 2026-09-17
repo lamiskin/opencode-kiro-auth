@@ -15,6 +15,7 @@ export function parseAwsEventStreamBuffer(buffer: string): ParsedEvent[] {
     const inputStart = remaining.indexOf('{"input":', searchStart)
     const stopStart = remaining.indexOf('{"stop":', searchStart)
     const contextUsageStart = remaining.indexOf('{"contextUsagePercentage":', searchStart)
+    const meteringStart = remaining.indexOf('{"usage":', searchStart)
 
     const candidates = [
       contentStart,
@@ -22,7 +23,8 @@ export function parseAwsEventStreamBuffer(buffer: string): ParsedEvent[] {
       followupStart,
       inputStart,
       stopStart,
-      contextUsageStart
+      contextUsageStart,
+      meteringStart
     ].filter((pos) => pos >= 0)
     if (candidates.length === 0) break
 
@@ -104,6 +106,15 @@ export function parseAwsEventStreamBuffer(buffer: string): ParsedEvent[] {
           type: 'contextUsage',
           data: {
             contextUsagePercentage: parsed.contextUsagePercentage
+          }
+        })
+      } else if (parsed.usage !== undefined) {
+        events.push({
+          type: 'meteringEvent',
+          data: {
+            usage: parsed.usage,
+            unit: parsed.unit,
+            unitPlural: parsed.unitPlural
           }
         })
       }
