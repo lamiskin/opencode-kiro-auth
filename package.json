@@ -23,10 +23,13 @@
     "auth"
   ],
   "author": "tickernelz",
+  "contributors": [
+    "lamiskin"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/tickernelz/opencode-kiro-auth.git"
+    "url": "git+https://github.com/lamiskin/opencode-kiro-auth.git"
   },
   "publishConfig": {
     "access": "public"
