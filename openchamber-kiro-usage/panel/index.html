@@ -94,6 +94,38 @@
         .error-message {
             color: var(--oc-error-text, #e74c3c);
         }
+        .pace {
+            margin-top: 16px;
+        }
+        .pace-label {
+            font-size: 14px;
+            margin-bottom: 8px;
+            color: var(--oc-info-text, var(--oc-fg, #e0e0e0));
+        }
+        .pace-bar {
+            position: relative;
+            height: 10px;
+            background: var(--oc-muted-surface, #444);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .pace-bar-fill {
+            position: absolute;
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+        .pace-bar-fill.green { background: var(--oc-success, #2ecc71); }
+        .pace-bar-fill.red { background: var(--oc-error, #e74c3c); }
+        .pace-marker {
+            position: absolute;
+            width: 2px;
+            height: 100%;
+            background: var(--oc-fg, #fff);
+            transform: translateX(-50%);
+        }
+        .pace-status.ok { color: var(--oc-success-text, #2ecc71); }
+        .pace-status.over { color: var(--oc-error-text, #e74c3c); }
     </style>
 </head>
 <body>
