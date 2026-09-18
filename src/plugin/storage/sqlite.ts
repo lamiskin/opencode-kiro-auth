@@ -180,7 +180,7 @@ export class KiroDatabase {
         .prepare(
           `DELETE FROM accounts
            WHERE email = 'test@example.com'
-              OR email LIKE 'placeholder-%@awsapps.local'
+               OR email LIKE '%-placeholder+%@awsapps.local'
               OR (is_healthy = 0
                   AND unhealthy_reason IN ('Account Suspended', 'ExpiredTokenException')
                   AND (recovery_time IS NULL OR recovery_time < ?))`
