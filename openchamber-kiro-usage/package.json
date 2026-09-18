@@ -1,0 +1,32 @@
+{
+  "name": "openchamber-kiro-usage",
+  "private": true,
+  "version": "1.0.0",
+  "openchamber": {
+    "apiVersion": 1,
+    "contributes": {
+      "panel": {
+        "id": "kiro-usage",
+        "name": "Kiro Usage",
+        "icon": "panel/icon.svg",
+        "entry": "panel/index.html"
+      },
+      "service": {
+        "entry": "service/main.js",
+        "runtime": "host",
+        "permissions": {
+          "exec": ["node"]
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "@openchamber/sdk": "latest"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  },
+  "scripts": {
+    "build": "esbuild panel/panel-src/main.js --bundle --format=iife --outfile=panel/main.js"
+  }
+}

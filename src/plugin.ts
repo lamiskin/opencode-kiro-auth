@@ -13,6 +13,7 @@ import { syncFromKiroCli } from './plugin/sync/kiro-cli.js'
 import {
   fetchUsageLimits,
   formatUsageReport,
+  KiroUsageReportEntry,
   summarizeUsage,
   updateAccountQuota
 } from './plugin/usage.js'
@@ -49,19 +50,13 @@ const WEB_SEARCH_DESCRIPTION = `Search the web using Kiro's built-in search engi
 - ALWAYS cite sources with inline links in the format [description](url).
 - Paraphrase and summarize; do not reproduce more than ~30 consecutive words verbatim from any single source. Preserve factual accuracy while condensing.`
 
-export async function fetchUsageReport(
+export async function collectUsageEntries(
   config: any,
   accountManager: AccountManager,
   repository: AccountRepository
-): Promise<string> {
+): Promise<KiroUsageReportEntry[]> {
   const refresher = new TokenRefresher(config, accountManager, syncFromKiroCli, repository)
-  const entries: Array<{
-    email: string
-    used?: number
-    limit?: number
-    pct?: number
-    error?: string
-  }> = []
+  const entries: KiroUsageReportEntry[] = []
 
   for (const account of accountManager.getAccounts()) {
     try {
@@ -87,6 +82,15 @@ export async function fetchUsageReport(
   }
 
   await repository.batchSave(accountManager.getAccounts())
+  return entries
+}
+
+export async function fetchUsageReport(
+  config: any,
+  accountManager: AccountManager,
+  repository: AccountRepository
+): Promise<string> {
+  const entries = await collectUsageEntries(config, accountManager, repository)
   return formatUsageReport(entries)
 }
 
