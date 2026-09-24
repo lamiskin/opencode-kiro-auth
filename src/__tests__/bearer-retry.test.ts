@@ -88,7 +88,10 @@ function createHarness() {
     enable_log_api_request: true
   }
 
-  const handler: any = new RequestHandler(accountManager, config, repository)
+  const handler: any = new RequestHandler(accountManager, config, repository, {
+    notify: () => {},
+    reauthorize: async () => {}
+  })
   let forceRefreshCalls = 0
 
   handler.accountSelector = {
@@ -114,11 +117,9 @@ function createHarness() {
 }
 
 function request(handler: any) {
-  return handler.handle(
-    'https://q.us-east-1.amazonaws.com/models/claude-sonnet-4-5',
-    { body: '{}' },
-    () => {}
-  )
+  return handler.handle('https://q.us-east-1.amazonaws.com/models/claude-sonnet-4-5', {
+    body: '{}'
+  })
 }
 
 describe('RequestHandler SDK error recovery', () => {

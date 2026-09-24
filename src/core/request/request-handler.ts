@@ -17,7 +17,7 @@ import { ErrorHandler } from './error-handler'
 import { ResponseHandler } from './response-handler'
 import { RetryStrategy } from './retry-strategy'
 
-type ToastFunction = (message: string, variant: 'info' | 'warning' | 'success' | 'error') => void
+import type { HostPort } from '../../host/port.js'
 
 const KIRO_API_PATTERN = /^(https?:\/\/)?q\.[a-z0-9-]+\.amazonaws\.com/
 const REAUTH_FAILURE_COOLDOWN_MS = 60000
@@ -37,7 +37,7 @@ export class RequestHandler {
     private accountManager: AccountManager,
     private config: KiroConfig,
     private repository: AccountRepository,
-    private client?: any
+    private port?: HostPort
   ) {
     this.accountSelector = new AccountSelector(accountManager, config, syncFromKiroCli, repository)
     this.tokenRefresher = new TokenRefresher(config, accountManager, syncFromKiroCli, repository)
@@ -47,14 +47,14 @@ export class RequestHandler {
     this.retryStrategy = new RetryStrategy(config)
   }
 
-  async handle(input: any, init: any, showToast: ToastFunction): Promise<Response> {
+  async handle(input: any, init: any): Promise<Response> {
     const url = typeof input === 'string' ? input : input.url
 
     if (!KIRO_API_PATTERN.test(url)) {
       return fetch(input, init)
     }
 
-    return this.enqueueKiroRequest(() => this.handleKiroRequest(url, init, showToast))
+    return this.enqueueKiroRequest(() => this.handleKiroRequest(url, init))
   }
 
   private async enqueueKiroRequest<T>(run: () => Promise<T>): Promise<T> {
@@ -74,11 +74,7 @@ export class RequestHandler {
     }
   }
 
-  private async handleKiroRequest(
-    url: string,
-    init: any,
-    showToast: ToastFunction
-  ): Promise<Response> {
+  private async handleKiroRequest(url: string, init: any): Promise<Response> {
     const body = init?.body ? JSON.parse(init.body) : {}
     const model = this.extractModel(url) || body.model || 'claude-sonnet-4-5'
     const think =
@@ -94,6 +90,8 @@ export class RequestHandler {
     let consecutiveNullAccounts = 0
     const retryContext = this.retryStrategy.createContext()
 
+    const notify = this.port?.notify ?? (() => {})
+
     while (true) {
       const check = this.retryStrategy.shouldContinue(retryContext)
       if (!check.canContinue) {
@@ -101,16 +99,16 @@ export class RequestHandler {
       }
 
       if (this.allAccountsPermanentlyUnhealthy()) {
-        const reauthed = await this.triggerReauth(showToast)
+        const reauthed = await this.triggerReauth()
         if (!reauthed) {
           throw new Error('All accounts are permanently unhealthy. Please re-authenticate.')
         }
         continue
       }
 
-      let acc = await this.accountSelector.selectHealthyAccount(showToast).catch(async (e) => {
+      let acc = await this.accountSelector.selectHealthyAccount(notify).catch(async (e) => {
         if (e instanceof Error && e.message.includes('reauth required')) {
-          const reauthed = await this.triggerReauth(showToast)
+          const reauthed = await this.triggerReauth()
           if (!reauthed)
             throw new Error('All accounts are unhealthy or rate-limited. Please re-authenticate.')
           return null
@@ -129,7 +127,7 @@ export class RequestHandler {
       const tokenResult = await this.tokenRefresher.refreshIfNeeded(
         acc,
         this.accountManager.toAuthDetails(acc),
-        showToast
+        notify
       )
       if (tokenResult.shouldContinue) {
         acc = tokenResult.account
@@ -142,14 +140,19 @@ export class RequestHandler {
 
       await refreshContextWindowSizes(auth)
 
-      const sdkPrep = this.prepareSdkRequest(init?.body, model, auth, think, budget, showToast)
+      const sdkPrep = this.prepareSdkRequest(init?.body, model, auth, think, budget, notify)
 
       const apiTimestamp = this.config.enable_log_api_request ? logger.getTimestamp() : null
       if (apiTimestamp) {
         this.logSdkRequest(sdkPrep, acc, apiTimestamp)
       }
       try {
-        const client = createSdkClient(auth, sdkPrep.region, sdkPrep.effort, isOpenAIModel(sdkPrep.effectiveModel))
+        const client = createSdkClient(
+          auth,
+          sdkPrep.region,
+          sdkPrep.effort,
+          isOpenAIModel(sdkPrep.effectiveModel)
+        )
         const command = new GenerateAssistantResponseCommand({
           conversationState: sdkPrep.conversationState as any,
           profileArn: sdkPrep.profileArn
@@ -206,7 +209,7 @@ export class RequestHandler {
             mockResponse,
             acc,
             { retry, bearerRetried },
-            showToast
+            notify
           )
 
           if (errorResult.shouldRetry) {
@@ -242,7 +245,7 @@ export class RequestHandler {
           throw new Error(`Kiro Error: ${httpStatus}`)
         }
 
-        const networkResult = await this.errorHandler.handleNetworkError(e, { retry }, showToast)
+        const networkResult = await this.errorHandler.handleNetworkError(e, { retry }, notify)
 
         if (networkResult.shouldRetry) {
           if (networkResult.newContext) {
@@ -362,15 +365,13 @@ export class RequestHandler {
     }
   }
 
-  private async triggerReauth(showToast: ToastFunction): Promise<boolean> {
-    if (!this.client) return false
+  private async triggerReauth(): Promise<boolean> {
+    if (!this.port) return false
 
+    const notify = this.port.notify
     const cooldownRemaining = REAUTH_FAILURE_COOLDOWN_MS - (Date.now() - this.lastFailedReauthAt)
     if (cooldownRemaining > 0) {
-      showToast(
-        'Recent re-authentication failed. Please complete authentication manually.',
-        'error'
-      )
+      notify('Recent re-authentication failed. Please complete authentication manually.', 'error')
       return false
     }
 
@@ -378,7 +379,7 @@ export class RequestHandler {
       return this.reauthInFlight
     }
 
-    this.reauthInFlight = this.performReauth(showToast)
+    this.reauthInFlight = this.performReauth()
     const success = await this.reauthInFlight.finally(() => {
       this.reauthInFlight = null
     })
@@ -386,18 +387,15 @@ export class RequestHandler {
     return success
   }
 
-  private async performReauth(showToast: ToastFunction): Promise<boolean> {
-    try {
-      showToast('Session expired. Re-authenticating...', 'warning')
-      await this.client.provider.oauth.authorize({
-        path: { id: 'kiro' },
-        body: { method: 0 }
-      })
+  private async performReauth(): Promise<boolean> {
+    if (!this.port) return false
 
-      await this.client.provider.oauth.callback({
-        path: { id: 'kiro' },
-        body: { method: 0 }
-      })
+    const notify = this.port.notify
+    try {
+      notify('Session expired. Re-authenticating...', 'warning')
+
+      // Delegate re-authorization to the host via HostPort
+      await this.port.reauthorize()
 
       this.repository.invalidateCache()
       const accounts = await this.repository.findAll()
@@ -407,11 +405,11 @@ export class RequestHandler {
 
       if (!this.hasUsableAccount(accounts)) {
         logger.warn('Re-auth completed but no usable Kiro account was found')
-        showToast('Re-authentication completed but no usable Kiro account was found.', 'error')
+        notify('Re-authentication completed but no usable Kiro account was found.', 'error')
         return false
       }
 
-      showToast('Re-authentication successful.', 'success')
+      notify('Re-authentication successful.', 'success')
       return true
     } catch (e) {
       logger.error('Re-auth failed', e instanceof Error ? e : new Error(String(e)))
