@@ -15,6 +15,11 @@ interface TokenRefresherConfig {
 }
 
 export class TokenRefresher {
+  private static refreshLocks = new Map<
+    string,
+    Promise<{ account: ManagedAccount; shouldContinue: boolean }>
+  >()
+
   constructor(
     private config: TokenRefresherConfig,
     private accountManager: AccountManager,
@@ -22,53 +27,87 @@ export class TokenRefresher {
     private repository: AccountRepository
   ) {}
 
+  private async withAccountLock<T>(accountId: string, fn: () => Promise<T>): Promise<T> {
+    const existing = TokenRefresher.refreshLocks.get(accountId)
+    if (existing) {
+      // A refresh is already in flight for this account; wait for it and adopt its result
+      return existing as Promise<T>
+    }
+
+    // Start a new refresh for this account
+    const promise = fn()
+    TokenRefresher.refreshLocks.set(
+      accountId,
+      promise as Promise<{ account: ManagedAccount; shouldContinue: boolean }>
+    )
+
+    try {
+      return await promise
+    } finally {
+      // Clean up the lock entry after the refresh settles (success or failure)
+      if (TokenRefresher.refreshLocks.get(accountId) === promise) {
+        TokenRefresher.refreshLocks.delete(accountId)
+      }
+    }
+  }
+
   async refreshIfNeeded(
     account: ManagedAccount,
     auth: KiroAuthDetails,
     showToast: ToastFunction
   ): Promise<{ account: ManagedAccount; shouldContinue: boolean }> {
-    if (!accessTokenExpired(auth, this.config.token_expiry_buffer_ms)) {
-      return { account, shouldContinue: false }
-    }
+    return this.withAccountLock(account.id, async () => {
+      if (!accessTokenExpired(auth, this.config.token_expiry_buffer_ms)) {
+        return { account, shouldContinue: false }
+      }
 
-    try {
-      const newAuth = await refreshAccessToken(auth)
-      this.accountManager.updateFromAuth(account, newAuth)
-      // Persist only the updated account instead of all accounts — avoids
-      // invalidating the whole AccountCache on every token refresh.
-      await this.repository.save(account)
-      return { account, shouldContinue: false }
-    } catch (e: any) {
-      return await this.handleRefreshError(e, account, showToast)
-    }
+      try {
+        const newAuth = await refreshAccessToken(auth)
+        this.accountManager.updateFromAuth(account, newAuth)
+        // Persist only the updated account instead of all accounts — avoids
+        // invalidating the whole AccountCache on every token refresh.
+        await this.repository.save(account)
+        return { account, shouldContinue: false }
+      } catch (e: any) {
+        return await this.handleRefreshError(e, account, showToast)
+      }
+    })
   }
 
-  async forceRefresh(account: ManagedAccount, auth: KiroAuthDetails): Promise<void> {
-    if (this.config.auto_sync_kiro_cli) {
-      await this.syncFromKiroCli()
-    }
+  async forceRefresh(
+    account: ManagedAccount,
+    auth: KiroAuthDetails
+  ): Promise<{ account: ManagedAccount; shouldContinue: boolean }> {
+    // Use the same lock as refreshIfNeeded to serialize against concurrent refreshes
+    // Return same shape as refreshIfNeeded so joining is safe (prevents void/undefined crashes)
+    return this.withAccountLock(account.id, async () => {
+      if (this.config.auto_sync_kiro_cli) {
+        await this.syncFromKiroCli()
+      }
 
-    this.repository.invalidateCache()
-    const accounts = await this.repository.findAll()
-    const synced = accounts.find((a: ManagedAccount) => a.id === account.id)
+      this.repository.invalidateCache()
+      const accounts = await this.repository.findAll()
+      const synced = accounts.find((a: ManagedAccount) => a.id === account.id)
 
-    if (synced && synced.accessToken !== account.accessToken) {
-      this.accountManager.updateFromAuth(account, this.accountManager.toAuthDetails(synced))
-      await this.repository.batchSave(this.accountManager.getAccounts())
-      logger.debug('Force refresh: recovered newer token from CLI sync')
-      return
-    }
+      if (synced && synced.accessToken !== account.accessToken) {
+        this.accountManager.updateFromAuth(account, this.accountManager.toAuthDetails(synced))
+        await this.repository.batchSave(this.accountManager.getAccounts())
+        logger.debug('Force refresh: recovered newer token from CLI sync')
+        return { account, shouldContinue: false }
+      }
 
-    try {
-      const newAuth = await refreshAccessToken(auth)
-      this.accountManager.updateFromAuth(account, newAuth)
-      await this.repository.batchSave(this.accountManager.getAccounts())
-      logger.debug('Force refresh: token refreshed via OIDC')
-    } catch (e: any) {
-      logger.warn('Force refresh failed, will retry with current token', {
-        message: e instanceof Error ? e.message : String(e)
-      })
-    }
+      try {
+        const newAuth = await refreshAccessToken(auth)
+        this.accountManager.updateFromAuth(account, newAuth)
+        await this.repository.batchSave(this.accountManager.getAccounts())
+        logger.debug('Force refresh: token refreshed via OIDC')
+      } catch (e: any) {
+        logger.warn('Force refresh failed, will retry with current token', {
+          message: e instanceof Error ? e.message : String(e)
+        })
+      }
+      return { account, shouldContinue: false }
+    })
   }
 
   private async handleRefreshError(
