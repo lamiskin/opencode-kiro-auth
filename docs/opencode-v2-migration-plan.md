@@ -1,7 +1,9 @@
 # OpenCode v1 + v2 Dual-Support Migration Plan
 
-Status: planning complete, implementation not started.
-Author: oracle (ora-1), reconciled by orchestrator 2026-09-24.
+Status: **implemented and committed** (2026-09-25). Phases 1-4 and 6 shipped; Phase 5
+(v2 IdC OAuth re-auth) deliberately deferred — see "Outcome" section at the end of
+this document.
+Author: oracle (ora-1), reconciled by orchestrator 2026-09-24/25.
 
 ## Background
 
@@ -286,3 +288,91 @@ Phases 1→3→4 are strictly sequential. 5 and 6 are parallel-safe afterwards.
 - Memory #102 (ARCHITECTURE): `Plugin.define` is identity; v1/v2 module shapes are
   disjoint so one default export satisfies both; v2 ignores `package.json`
   `opencode.hooks`.
+
+---
+
+## Outcome (2026-09-25)
+
+Implemented across 6 phases, all completed except Phase 5 (deferred):
+
+- **Phase 1** — extracted shared core behind a `HostPort` interface
+  (`src/host/port.ts`: `notify`, `reauthorize`). Zero behavior change,
+  verified by full build + test pass before touching v2.
+- **Phase 2** — closed all 7 blocking unknowns against real published
+  `@opencode/plugin@2.0.16` / `@opencode/schema@2.0.16` tarballs (not just
+  docs). See corrections above.
+- **Phase 3** — built `src/adapters/v2.ts` (`kiroSetup(ctx)`): provider +
+  model registration via `ctx.provider.transform`, tool registration via
+  `ctx.tool.transform`, custom fetch via `ctx.aisdk.hook('sdk', ...)` calling
+  the real `createOpenAICompatible` factory, auth init, async model-catalog
+  refresh + `ctx.model.reload()`, cleanup aggregation.
+- **Phase 4** — wired the dual export in `src/index.ts`:
+  `export default { id: 'kiro', server: KiroOAuthPlugin, setup: kiroSetup }`.
+  v1 hosts pick up `server`, v2 hosts pick up `setup`. No `package.json`
+  `exports` map needed; `opencode.hooks` left as-is (v2 ignores it).
+- **Phase 5 (deferred)** — v2 IdC OAuth re-authentication. `reauthorize()`
+  in the v2 `HostPort` implementation currently throws a clear
+  "not yet implemented in v2 adapter" error. Kiro CLI credential sync
+  (fully supported on both generations) is the recommended path for v2
+  users until this lands. Documented as a known limitation in README.
+- **Phase 6** — README updated with an "OpenCode Version Support" section:
+  v1 (tested through 1.18.32) + v2 dual support, the `plugin`→`plugins`
+  config key rename for v2 hosts, and the two known v2 limitations (no
+  toast/notify capability — degrades to logging; no IdC re-auth yet).
+
+### Bugs found and fixed post-implementation (oracle review, 2026-09-25)
+
+A full-diff oracle review (type-checking the v2 adapter against the real
+`@opencode/plugin@2.0.16` types, not just the hand-rolled fake `ctx` in
+tests) found and fixed 4 real bugs before this ever shipped:
+
+1. `ctx.directory` doesn't exist on the real v2 context — corrected to
+   `ctx.location.directory`.
+2. `ProviderEditor.add()` takes one object `{info, models}`, not two
+   positional args — corrected.
+3. Tool `execute` must return `Tool.Result`, not a raw string — corrected.
+4. `Model.Info`/`Provider.Info` IDs are nominal branded types — corrected
+   with casts.
+
+A type-only conformance check (`src/__tests__/types/v2-conformance.ts`,
+excluded from the `dist/` build) verifies `kiroSetup`'s signature against
+the real `@opencode/plugin` devDependency so future signature drift fails
+`npm run typecheck` instead of shipping silently.
+
+Also fixed during the same review pass: `src/__tests__/adapters/v2.test.ts`
+had wrong relative mock paths (real AWS calls + real local DB were leaking
+into the test run), and `src/__tests__/account-selector.test.ts` had a
+timer race that made it ~50% flaky in isolation. Both fixed.
+
+Test coverage was also extended for previously near-zero-covered modules
+found during the same review: `src/infrastructure/transformers/event-stream-parser.ts`
+(0.8% → full coverage) and `src/core/account/account-selector.ts` (15% →
+full coverage), plus `src/plugin/streaming/stream-parser.ts` gained coverage
+that caught and fixed a real bug (incomplete JSON at a chunk boundary was
+being truncated instead of preserved in `remaining`).
+
+### Commits
+
+- `2145658` fix(streaming): keep partial JSON in remaining on incomplete chunk
+- `4480c49` fix(auth): serialize concurrent token refreshes per account
+  (independent of this migration — a pre-existing race, found and fixed
+  in the same review pass; see the vault project note for full context)
+- `994ba78` feat: support OpenCode v1 and v2 via HostPort seam
+- `4bd636f` docs: document OpenCode v1/v2 support and fork feature notes
+
+### Known follow-up work (not blocking)
+
+- `src/tools.ts` and `src/adapters/v1.ts` still duplicate `buildTools`/
+  `WEB_SEARCH_DESCRIPTION` verbatim — `tools.ts` was meant to be the shared
+  module but `v1.ts` never adopted it. Low risk, cosmetic debt.
+- `src/runtime.ts` ("shared runtime") is currently only imported by
+  `v2.ts` — `v1.ts` still inlines its own construction. Two divergent
+  paths that can drift; worth unifying if v1-side changes become frequent.
+- Two of the v2 conformance check's four type-level checks
+  (`_CheckProviderAdd`, `checkToolExecute`) are declared but not wired to
+  actually fail the build — they'd need `satisfies` or
+  `@ts-expect-error`-guarded assignments to have real teeth. Not urgent;
+  bugs #2 and #3 above are already covered by the shipped runtime code
+  and normal test coverage.
+- Phase 5 (v2 IdC OAuth re-auth) — implement when there's a concrete v2
+  user who needs it; Kiro CLI sync covers the common case in the meantime.
