@@ -4,6 +4,7 @@ export function parseStreamBuffer(buffer: string): { events: any[]; remaining: s
   const events: any[] = []
   let remaining = buffer
   let searchStart = 0
+  let brokeForIncomplete = false
 
   while (true) {
     const contentStart = remaining.indexOf('{"content":', searchStart)
@@ -65,7 +66,9 @@ export function parseStreamBuffer(buffer: string): { events: any[]; remaining: s
     }
 
     if (jsonEnd < 0) {
+      // Preserve everything from jsonStart onward as remaining
       remaining = remaining.substring(jsonStart)
+      brokeForIncomplete = true
       break
     }
 
@@ -125,7 +128,9 @@ export function parseStreamBuffer(buffer: string): { events: any[]; remaining: s
     }
   }
 
-  if (searchStart > 0 && remaining.length > 0) {
+  // Only truncate leading content when we successfully parsed events, not when we
+  // broke out due to incomplete JSON (that partial content is in remaining)
+  if (!brokeForIncomplete && searchStart > 0 && remaining.length > 0) {
     remaining = remaining.substring(searchStart)
   }
 
