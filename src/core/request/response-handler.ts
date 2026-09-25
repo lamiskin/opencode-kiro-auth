@@ -76,6 +76,7 @@ export class ResponseHandler {
             for await (const e of s) {
               c.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(e)}\n\n`))
             }
+            c.enqueue(new TextEncoder().encode('data: [DONE]\n\n'))
             c.close()
           } catch (err) {
             c.error(err)

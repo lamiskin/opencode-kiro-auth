@@ -10,7 +10,6 @@ describe('package plugin module', () => {
     expect(typeof pluginModule.server).toBe('function')
   })
 
-  test('has setup function for v2', () => {
-    expect(typeof pluginModule.setup).toBe('function')
-  })
+  // Note: setup is no longer exported from v1 entry (src/index.ts)
+  // v2 loads via src/v2.ts directly through the v2-plugin/ wrapper
 })

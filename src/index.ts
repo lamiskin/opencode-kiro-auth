@@ -1,4 +1,3 @@
-import { kiroSetup } from './adapters/v2.js'
 import { KiroOAuthPlugin } from './plugin.js'
 
 export { KiroOAuthPlugin }
@@ -8,6 +7,5 @@ export type { KiroAuthMethod, KiroRegion, ManagedAccount } from './plugin/types.
 
 export default {
   id: 'kiro',
-  server: KiroOAuthPlugin,
-  setup: kiroSetup
+  server: KiroOAuthPlugin
 }

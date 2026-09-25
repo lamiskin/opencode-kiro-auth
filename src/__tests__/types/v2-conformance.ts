@@ -26,8 +26,7 @@ function acceptsRealContext(ctx: RealContext): void {
     location: ctx.location,
     provider: ctx.provider as any,
     model: ctx.model as any,
-    tool: ctx.tool as any,
-    aisdk: ctx.aisdk as any
+    tool: ctx.tool as any
   })
 }
 

@@ -8,7 +8,7 @@
 import type { Location, Model, Provider } from '@opencode/plugin'
 import type { Tool } from '@opencode/schema/tool'
 
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
+import * as http from 'node:http'
 import { HostPort } from '../host/port.js'
 import * as logger from '../plugin/logger.js'
 import { buildModelRegistry, refreshRegistry } from '../plugin/model-registry.js'
@@ -27,13 +27,6 @@ interface V2Context {
   }
   tool: {
     transform(editor: (editor: ToolEditor) => void): Promise<ToolRegistration>
-  }
-  aisdk: {
-    hook(
-      type: 'sdk',
-      cb: (event: AISDKSdkEvent) => void,
-      options: { providerID: string }
-    ): Promise<AISDKSdkRegistration>
   }
 }
 
@@ -68,14 +61,6 @@ interface ToolRegistration {
   dispose(): void | Promise<void>
 }
 
-interface AISDKSdkEvent {
-  sdk: unknown
-}
-
-interface AISDKSdkRegistration {
-  dispose(): void | Promise<void>
-}
-
 // ============ v2 HostPort implementation ============
 
 /**
@@ -101,13 +86,127 @@ function createV2HostPort(): HostPort {
   }
 }
 
+// ============ Local HTTP server fronting RequestHandler ============
+
+/**
+ * OpenCode v2 resolves an `@ai-sdk/openai-compatible` provider by calling that
+ * package's own `model(modelID, settings)` against `settings.baseURL` — it
+ * makes a real HTTP request, the same way the published `b3nw/
+ * opencode-dynamic-custom-providers` plugin and OpenCode's docs describe for
+ * v2 custom providers. There is no fetch-injection point for this path (that
+ * is what `ctx.aisdk.hook('sdk', ...)` is for — instrumenting an SDK instance
+ * OpenCode itself already built from a resolvable package — not supplying a
+ * fully custom backend). So Kiro's auth/token/request handling is fronted by
+ * an actual loopback HTTP server, and `settings.baseURL` points at that.
+ *
+ * The loopback server is runtime-scoped (created fresh per kiroSetup call)
+ * with token authentication to prevent unauthorized local access.
+ */
+
+interface LocalProxyServer {
+  baseURL: string
+  token: string
+  close: () => Promise<void>
+}
+
+function createLocalProxyServer(runtime: Runtime): Promise<LocalProxyServer> {
+  return new Promise((resolve, reject) => {
+    // Generate a random token for bearer authentication
+    const token = crypto.randomUUID()
+
+    const server = http.createServer(async (req, res) => {
+      // Authenticate: require Bearer token matching our generated token
+      const authHeader = req.headers.authorization
+      if (!authHeader || !authHeader.startsWith('Bearer ') || authHeader.slice(7) !== token) {
+        res.statusCode = 401
+        res.setHeader('Content-Type', 'application/json')
+        res.end(JSON.stringify({ error: { message: 'Unauthorized' } }))
+        return
+      }
+
+      const chunks: Buffer[] = []
+      req.on('data', (chunk) => chunks.push(chunk))
+      req.on('end', async () => {
+        const body = Buffer.concat(chunks)
+        const url = `http://127.0.0.1${req.url}`
+        const headers: Record<string, string> = {}
+        for (const [key, value] of Object.entries(req.headers)) {
+          if (typeof value === 'string') headers[key] = value
+        }
+        // Remove authorization header before forwarding — RequestHandler
+        // adds its own auth based on account credentials
+        delete headers.authorization
+        const bodyStr = body.length ? body.toString('utf8') : undefined
+
+        try {
+          const response: Response = await runtime.requestHandler.handleForced(url, {
+            method: req.method,
+            headers,
+            body: req.method !== 'GET' && req.method !== 'HEAD' ? bodyStr : undefined
+          })
+
+          res.statusCode = response.status
+          response.headers.forEach((value, key) => {
+            // Buffering the whole body first (arrayBuffer) delayed every
+            // byte until the SSE stream fully finished, which is wrong for
+            // a live text/event-stream response. Pipe chunks through as
+            // they arrive instead. Content-Length would be wrong for a
+            // streamed body and Node sets Transfer-Encoding itself.
+            if (key.toLowerCase() === 'content-length') return
+            res.setHeader(key, value)
+          })
+          if (!response.body) {
+            res.end()
+            return
+          }
+          const reader = response.body.getReader()
+          try {
+            while (true) {
+              const { done, value } = await reader.read()
+              if (done) break
+              if (value) res.write(Buffer.from(value))
+            }
+          } finally {
+            res.end()
+          }
+        } catch (e) {
+          logger.error('[v2] Local proxy request failed', e instanceof Error ? e : undefined)
+          res.statusCode = 500
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify({ error: { message: String(e) } }))
+        }
+      })
+    })
+
+    server.on('error', reject)
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address()
+      const port = address && typeof address === 'object' ? address.port : 0
+      const baseURL = `http://127.0.0.1:${port}`
+      logger.log('[v2] Local proxy server started', { baseURL, token: token.slice(0, 8) + '...' })
+
+      resolve({
+        baseURL,
+        token,
+        close: () => {
+          return new Promise((res) => {
+            // Close all connections before closing the server to ensure
+            // in-flight SSE streams don't keep the process alive
+            server.closeAllConnections()
+            server.close(() => res())
+          })
+        }
+      })
+    })
+  })
+}
+
 // ============ Model → v2 Model.Info mapping ============
 
 interface ModelInfo {
   id: Model.ID
   modelID: Model.ID
   providerID: Provider.ID
-  package: Provider.Package
   name: string
   limit: { context: number; output: number }
   capabilities: {
@@ -122,7 +221,7 @@ interface ModelInfo {
   cost: Array<unknown>
   status: 'active'
   enabled: true
-  variants?: Array<{ id: Model.VariantID; settings?: Record<string, unknown> }>
+  variants: Array<{ id: Model.VariantID; settings?: Record<string, unknown> }>
 }
 
 /**
@@ -134,7 +233,7 @@ interface ModelInfo {
  * - variants: Record → Array<{id, settings}>
  * - Cast IDs to branded types per @opencode/schema
  */
-function buildV2Models(baseURL: string): ModelInfo[] {
+function buildV2Models(): ModelInfo[] {
   const registry = buildModelRegistry() as Record<
     string,
     {
@@ -172,7 +271,6 @@ function buildV2Models(baseURL: string): ModelInfo[] {
       id: modelIdBranded,
       modelID: modelIdBranded,
       providerID: providerIdBranded,
-      package: '@ai-sdk/openai-compatible' as Provider.Package,
       name: model.name,
       limit: model.limit,
       capabilities: {
@@ -185,7 +283,7 @@ function buildV2Models(baseURL: string): ModelInfo[] {
       cost: [],
       status: 'active',
       enabled: true,
-      ...(variants.length > 0 ? { variants } : {})
+      variants
     })
   }
 
@@ -228,9 +326,10 @@ function mapTools(runtime: Runtime): ToolInfo[] {
  *
  * Registration flow:
  * 1. Create runtime with v2 HostPort
- * 2. Register provider + models via ctx.provider.transform
- * 3. Register tools via ctx.tool.transform
- * 4. Register aisdk hook for custom fetch
+ * 2. Start a local loopback HTTP server fronting RequestHandler
+ * 3. Register provider + models via ctx.provider.transform, pointing the
+ *    real @ai-sdk/openai-compatible package at that local server
+ * 4. Register tools via ctx.tool.transform
  * 5. Initialize auth (CLI sync)
  * 6. Refresh model catalog asynchronously, then reload models
  * 7. Return cleanup function to dispose all registrations
@@ -250,9 +349,15 @@ export async function kiroSetup(ctx: V2Context): Promise<(() => void | Promise<v
 
   const registrations: Array<{ dispose(): void | Promise<void> }> = []
 
+  // Start runtime-scoped local proxy server with token auth
+  const proxy = await createLocalProxyServer(runtime)
+  const localBaseURL = proxy.baseURL
+  const authToken = proxy.token
+  registrations.push({ dispose: () => proxy.close() })
+
   // Bug #2 fix: provider.add() takes single object { info, models }
   const providerReg = await ctx.provider.transform((editor) => {
-    const models = buildV2Models(runtime.baseURL)
+    const models = buildV2Models()
     editor.add({
       info: {
         id: 'kiro' as Provider.ID,
@@ -260,7 +365,8 @@ export async function kiroSetup(ctx: V2Context): Promise<(() => void | Promise<v
         activation: 'enabled' as const,
         package: '@ai-sdk/openai-compatible' as Provider.Package,
         settings: {
-          baseURL: runtime.baseURL
+          baseURL: localBaseURL,
+          apiKey: authToken
         }
       },
       models
@@ -276,26 +382,6 @@ export async function kiroSetup(ctx: V2Context): Promise<(() => void | Promise<v
     }
   })
   registrations.push(toolReg)
-
-  // Register aisdk hook for custom fetch
-  // The event.sdk should be an OpenAI-compatible fetch wrapper.
-  // We provide a minimal fetch implementation that routes to requestHandler.
-  const aisdkReg = await ctx.aisdk.hook(
-    'sdk',
-    (event) => {
-      // Create the real OpenAI-compatible provider instance
-      // This provides the full AI SDK provider interface with languageModel(), chatModel(), etc.
-      // Cast to any to avoid FetchFunction type mismatch - our handler accepts the standard fetch(input, init) signature
-      event.sdk = createOpenAICompatible({
-        name: 'kiro',
-        baseURL: runtime.baseURL,
-        apiKey: '',
-        fetch: ((input: any, init?: any) => runtime.requestHandler.handle(input, init)) as any
-      })
-    },
-    { providerID: 'kiro' }
-  )
-  registrations.push(aisdkReg)
 
   // Initialize auth (CLI sync) — runs unconditionally in v2
   await runtime.authHandler.initialize()

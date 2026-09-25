@@ -51,14 +51,9 @@ interface FakeToolEditor {
   addedTools: any[]
 }
 
-interface FakeAisdkEvent {
-  sdk: any
-}
-
 function createFakeContext(directory = '/fake/directory') {
   const providerEditor: FakeProviderEditor = { addedProvider: null, addedModels: [] }
   const toolEditor: FakeToolEditor = { addedTools: [] }
-  const aisdkEvents: FakeAisdkEvent[] = []
 
   return {
     location: {
@@ -99,26 +94,9 @@ function createFakeContext(directory = '/fake/directory') {
         return reg
       })
     },
-    aisdk: {
-      hook: vi.fn(
-        async (
-          type: string,
-          cb: (event: FakeAisdkEvent) => void,
-          _options: { providerID: string }
-        ) => {
-          const event: FakeAisdkEvent = { sdk: undefined }
-          aisdkEvents.push(event)
-          // Simulate async hook execution
-          setTimeout(() => cb(event), 0)
-          const reg = new FakeRegistration()
-          return reg
-        }
-      )
-    },
     // Captured references for assertions
     _providerEditor: providerEditor,
-    _toolEditor: toolEditor,
-    _aisdkEvents: aisdkEvents
+    _toolEditor: toolEditor
   }
 }
 
@@ -160,7 +138,9 @@ describe('v2 adapter', () => {
       expect(model.id).toBeDefined()
       expect(model.modelID).toBeDefined()
       expect(model.providerID).toBe('kiro')
-      expect(model.package).toBe('@ai-sdk/openai-compatible')
+      // Deliberately no per-model `package`: setting it makes OpenCode resolve
+      // that npm specifier directly instead of using ctx.aisdk.hook('sdk', ...).
+      expect(model.package).toBeUndefined()
       expect(model.name).toBeDefined()
       expect(model.limit).toBeDefined()
       expect(model.limit.context).toBeGreaterThan(0)
@@ -204,24 +184,46 @@ describe('v2 adapter', () => {
     expect(typeof usageTool.execute).toBe('function')
   })
 
-  it('registers aisdk sdk hook that sets event.sdk', async () => {
+  it('fronts RequestHandler with a real local HTTP server and points settings.baseURL at it', async () => {
     const ctx = createFakeContext('/test/dir')
-    await kiroSetup(ctx as any)
+    const cleanup = (await kiroSetup(ctx as any)) as (() => void | Promise<void>) | undefined
 
-    // aisdk.hook should have been called with 'sdk' and providerID: 'kiro'
-    expect(ctx.aisdk.hook).toHaveBeenCalledWith('sdk', expect.any(Function), { providerID: 'kiro' })
+    const baseURL: string = ctx._providerEditor.addedProvider.settings.baseURL
+    const authToken: string = ctx._providerEditor.addedProvider.settings.apiKey
 
-    // Wait for the async hook callback to fire
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    // OpenCode v2 resolves @ai-sdk/openai-compatible by making a real HTTP
+    // request to settings.baseURL — there is no fetch-injection point for
+    // this path, so Kiro's request handling is fronted by an actual loopback
+    // server instead of the mocked v1-style `fetch` override.
+    expect(baseURL).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/)
+    expect(authToken).toBeDefined()
+    expect(typeof authToken).toBe('string')
+    expect(authToken.length).toBeGreaterThan(0)
 
-    // SDK should be set on the event - it's the OpenAICompatible provider
-    // The provider is a callable that returns LanguageModel instances
-    const sdk = ctx._aisdkEvents[0]?.sdk
-    expect(sdk).toBeDefined()
-    expect(typeof sdk).toBe('function')
-    // The provider should have languageModel, chatModel, etc. methods
-    expect(typeof (sdk as any).languageModel).toBe('function')
-    expect(typeof (sdk as any).chatModel).toBe('function')
+    // Test 1: Request without auth header → 401 Unauthorized
+    const noAuthResponse = await fetch(`${baseURL}/anything`, { method: 'GET' })
+    expect(noAuthResponse.status).toBe(401)
+    expect(noAuthResponse.headers.get('content-type')).toBe('application/json')
+
+    // Test 2: Request with wrong token → 401 Unauthorized
+    const wrongTokenResponse = await fetch(`${baseURL}/anything`, {
+      method: 'GET',
+      headers: { Authorization: 'Bearer wrong-token' }
+    })
+    expect(wrongTokenResponse.status).toBe(401)
+
+    // Test 3: Request with correct token → forwarded to RequestHandler
+    // (will fail due to no account, but proves forwarding works)
+    const validResponse = await fetch(`${baseURL}/anything`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${authToken}` }
+    })
+    // Should get past auth; actual status depends on account config.
+    // Without a configured Kiro account, RequestHandler returns 500.
+    // The key is that it's NOT a 401, proving the request was forwarded.
+    expect(validResponse.status).not.toBe(401)
+
+    if (cleanup) await cleanup()
   })
 
   it('returns cleanup function that disposes registrations', async () => {

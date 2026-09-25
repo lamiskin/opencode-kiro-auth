@@ -57,6 +57,18 @@ export class RequestHandler {
     return this.enqueueKiroRequest(() => this.handleKiroRequest(url, init))
   }
 
+  /**
+   * Handles a request unconditionally as a Kiro request, skipping the
+   * KIRO_API_PATTERN check. Used by the OpenCode v2 adapter's local loopback
+   * proxy server (src/adapters/v2.ts), where every incoming request is
+   * definitionally a Kiro request — the URL is our own local server, not the
+   * real Kiro endpoint the pattern is written to recognize.
+   */
+  async handleForced(input: any, init: any): Promise<Response> {
+    const url = typeof input === 'string' ? input : input.url
+    return this.enqueueKiroRequest(() => this.handleKiroRequest(url, init))
+  }
+
   private async enqueueKiroRequest<T>(run: () => Promise<T>): Promise<T> {
     const previous = RequestHandler.kiroRequestQueue
     let release!: () => void
