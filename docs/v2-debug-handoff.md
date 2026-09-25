@@ -1,5 +1,7 @@
 # Handoff: OpenCode v2 support debugging session
 
+*Update (2026-09-25): This plugin is now confirmed working live in OpenChamber/OpenCode v2 — the user verified end-to-end chat successfully. See "Known remaining issues" resolution below.*
+
 Date: 2026-09-25
 Host under test: OpenChamber 2.0.1 with bundled OpenCode 2.0.16
 Terminal host: OpenCode 1.18.30 (v1, still works)
@@ -113,13 +115,9 @@ Note that new package versions install in the background and only load on the
 
 ## Critical gotchas for the next agent
 
-- **`provider.kiro.npm` in the user config is load-bearing on v2.** Removing it
-  reproduces `Provider package @ai-sdk/openai-compatible does not export
-model(modelID, settings)`. v2 resolves the config `npm` field to its own
-  _internal_ openai-compatible implementation, but resolves a plugin's
-  `package` field as a literal npm package — and the real
-  `@ai-sdk/openai-compatible` has no `model()` export. This is unresolved: the
-  plugin should not depend on user config for this.
+- ~~`provider.kiro.npm` in the user config is load-bearing on v2.~~ **Resolved (commit
+  `a829432`):** The plugin now declares `package: '@opencode/ai/providers/openai-compatible'`
+  which v2 resolves correctly without any user config workaround.
 - **`opencode run` is an unreliable test harness.** It reports
   `outcome: interrupted` with no assistant message even for providers that
   demonstrably work. Reproduced with both `rapid-mlx` and OpenCode's own
@@ -166,8 +164,17 @@ tail -f ~/.config/opencode/kiro-logs/plugin.log
 
 ## Known remaining issues
 
-- Plugin-declared `package` does not resolve standalone; it currently depends on
-  the user's `provider.kiro.npm` config entry.
+### Resolved (2026-09-25)
+
+- **Plugin-declared `package`**: Fixed in commit `a829432`. The package specifier was
+  corrected to `@opencode/ai/providers/openai-compatible`, which v2 resolves correctly.
+  User config workaround (`provider.kiro.npm`) is no longer required.
+- **Route narrowing**: Fixed in commit `58557ee`. The loopback server now accepts both
+  `/chat/completions` and `/v1/chat/completions` — the earlier `/v1`-only guard was
+  blocking every chat request.
+
+### Still open
+
 - v2 `reauthorize()` is still a stub — IdC re-auth is unimplemented in the v2
   adapter (deliberately deferred; CLI credential sync covers normal use).
 - Stale `dist/` artifacts persist after a source file is deleted, because `tsc`
