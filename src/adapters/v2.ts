@@ -40,6 +40,8 @@ interface ProviderInfo {
   activation: Provider.Activation
   package: Provider.Package
   settings?: Record<string, unknown>
+  /** Static request header overlay (Provider.Overlays in @opencode/schema). */
+  headers?: Record<string, string>
 }
 
 interface ProviderRegistration {
@@ -101,6 +103,18 @@ function createV2HostPort(): HostPort {
  *
  * The loopback server is runtime-scoped (created fresh per kiroSetup call)
  * with token authentication to prevent unauthorized local access.
+ *
+ * The token is accepted from two places, because v2 only reliably forwards
+ * one of them. `settings.apiKey` alone does not reach the wire: the host
+ * stores it in the provider catalog (visible via `GET /api/provider`) but the
+ * request arriving here carries no matching `Authorization` header, so a
+ * header-only gate 401s every chat and OpenChamber renders that as
+ * "Authentication failed for this provider". `settings.baseURL`, by contrast,
+ * is copied verbatim, so the token is also embedded as a path prefix and that
+ * is what actually authenticates in practice. A `headers` overlay on
+ * Provider.Info (a first-class field in @opencode/schema's Provider.Overlays)
+ * supplies the Authorization header as well, and is accepted here when
+ * present.
  */
 
 interface LocalProxyServer {
@@ -111,13 +125,28 @@ interface LocalProxyServer {
 
 function createLocalProxyServer(runtime: Runtime): Promise<LocalProxyServer> {
   return new Promise((resolve, reject) => {
-    // Generate a random token for bearer authentication
+    // Generate a random token, presented both as a bearer token and as a
+    // path prefix on baseURL.
     const token = crypto.randomUUID()
+    const tokenPath = `/k/${token}`
 
     const server = http.createServer(async (req, res) => {
-      // Authenticate: require Bearer token matching our generated token
+      // Authenticate: accept the token from the URL path prefix or from a
+      // Bearer header. Either alone is sufficient.
+      const reqPath = req.url || '/'
+      const pathAuthed = reqPath === tokenPath || reqPath.startsWith(`${tokenPath}/`)
       const authHeader = req.headers.authorization
-      if (!authHeader || !authHeader.startsWith('Bearer ') || authHeader.slice(7) !== token) {
+      const headerAuthed =
+        !!authHeader && authHeader.startsWith('Bearer ') && authHeader.slice(7) === token
+
+      if (!pathAuthed && !headerAuthed) {
+        // Logged, because a silent 401 here is indistinguishable from a
+        // credential problem in the host's UI.
+        logger.warn('[v2] Local proxy rejected unauthenticated request', {
+          method: req.method,
+          hasAuthHeader: !!authHeader,
+          pathPrefixMatched: false
+        })
         res.statusCode = 401
         res.setHeader('Content-Type', 'application/json')
         res.end(JSON.stringify({ error: { message: 'Unauthorized' } }))
@@ -128,7 +157,10 @@ function createLocalProxyServer(runtime: Runtime): Promise<LocalProxyServer> {
       req.on('data', (chunk) => chunks.push(chunk))
       req.on('end', async () => {
         const body = Buffer.concat(chunks)
-        const url = `http://127.0.0.1${req.url}`
+        // Strip the token path prefix so the forwarded URL looks like the
+        // upstream path (RequestHandler reads the model out of it).
+        const forwardPath = pathAuthed ? reqPath.slice(tokenPath.length) || '/' : reqPath
+        const url = `http://127.0.0.1${forwardPath}`
         const headers: Record<string, string> = {}
         for (const [key, value] of Object.entries(req.headers)) {
           if (typeof value === 'string') headers[key] = value
@@ -182,8 +214,11 @@ function createLocalProxyServer(runtime: Runtime): Promise<LocalProxyServer> {
     server.listen(0, '127.0.0.1', () => {
       const address = server.address()
       const port = address && typeof address === 'object' ? address.port : 0
-      const baseURL = `http://127.0.0.1:${port}`
-      logger.log('[v2] Local proxy server started', { baseURL, token: token.slice(0, 8) + '...' })
+      const baseURL = `http://127.0.0.1:${port}${tokenPath}`
+      logger.log('[v2] Local proxy server started', {
+        baseURL: `http://127.0.0.1:${port}${tokenPath.slice(0, 11)}...`,
+        token: token.slice(0, 8) + '...'
+      })
 
       resolve({
         baseURL,
@@ -367,6 +402,11 @@ export async function kiroSetup(ctx: V2Context): Promise<(() => void | Promise<v
         settings: {
           baseURL: localBaseURL,
           apiKey: authToken
+        },
+        // baseURL carries the token too; this overlay is the header path,
+        // which settings.apiKey alone does not reach on v2 2.0.16.
+        headers: {
+          authorization: `Bearer ${authToken}`
         }
       },
       models

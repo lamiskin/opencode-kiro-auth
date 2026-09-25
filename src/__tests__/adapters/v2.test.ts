@@ -190,38 +190,47 @@ describe('v2 adapter', () => {
 
     const baseURL: string = ctx._providerEditor.addedProvider.settings.baseURL
     const authToken: string = ctx._providerEditor.addedProvider.settings.apiKey
+    const headers: Record<string, string> = ctx._providerEditor.addedProvider.headers
+    const origin = new URL(baseURL).origin
 
     // OpenCode v2 resolves @ai-sdk/openai-compatible by making a real HTTP
     // request to settings.baseURL — there is no fetch-injection point for
     // this path, so Kiro's request handling is fronted by an actual loopback
     // server instead of the mocked v1-style `fetch` override.
-    expect(baseURL).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/)
+    //
+    // The token is embedded in baseURL's path because v2 2.0.16 stores
+    // settings.apiKey in its provider catalog without putting it on the wire,
+    // while baseURL is copied verbatim.
+    expect(baseURL).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/k\/[0-9a-f-]{36}$/)
     expect(authToken).toBeDefined()
-    expect(typeof authToken).toBe('string')
-    expect(authToken.length).toBeGreaterThan(0)
+    expect(baseURL.endsWith(`/k/${authToken}`)).toBe(true)
 
-    // Test 1: Request without auth header → 401 Unauthorized
-    const noAuthResponse = await fetch(`${baseURL}/anything`, { method: 'GET' })
+    // The headers overlay carries the same token as a bearer header.
+    expect(headers.authorization).toBe(`Bearer ${authToken}`)
+
+    // Test 1: no token in path and no auth header → 401
+    const noAuthResponse = await fetch(`${origin}/anything`, { method: 'GET' })
     expect(noAuthResponse.status).toBe(401)
     expect(noAuthResponse.headers.get('content-type')).toBe('application/json')
 
-    // Test 2: Request with wrong token → 401 Unauthorized
-    const wrongTokenResponse = await fetch(`${baseURL}/anything`, {
+    // Test 2: wrong token in both places → 401
+    const wrongTokenResponse = await fetch(`${origin}/k/wrong-token/anything`, {
       method: 'GET',
       headers: { Authorization: 'Bearer wrong-token' }
     })
     expect(wrongTokenResponse.status).toBe(401)
 
-    // Test 3: Request with correct token → forwarded to RequestHandler
-    // (will fail due to no account, but proves forwarding works)
-    const validResponse = await fetch(`${baseURL}/anything`, {
+    // Test 3: token in the path alone (no header) → forwarded to
+    // RequestHandler. This is the path the real host exercises.
+    const pathAuthedResponse = await fetch(`${baseURL}/anything`, { method: 'GET' })
+    expect(pathAuthedResponse.status).not.toBe(401)
+
+    // Test 4: token in the header alone (no path prefix) → also forwarded.
+    const headerAuthedResponse = await fetch(`${origin}/anything`, {
       method: 'GET',
       headers: { Authorization: `Bearer ${authToken}` }
     })
-    // Should get past auth; actual status depends on account config.
-    // Without a configured Kiro account, RequestHandler returns 500.
-    // The key is that it's NOT a 401, proving the request was forwarded.
-    expect(validResponse.status).not.toBe(401)
+    expect(headerAuthedResponse.status).not.toBe(401)
 
     if (cleanup) await cleanup()
   })
