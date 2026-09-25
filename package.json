@@ -5,6 +5,16 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./v2": {
+      "types": "./dist/v2.d.ts",
+      "default": "./dist/v2.js"
+    }
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && node scripts/fix-esm-imports.mjs",
     "format": "prettier --write 'src/**/*.ts'",

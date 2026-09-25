@@ -93,16 +93,21 @@ any of them are `-thinking` models.
 
 ## OpenCode Version Support
 
-This plugin supports both OpenCode v1 and v2 via a dual-export entrypoint (`src/index.ts`
-exports `{ id, server, setup }`):
+This plugin supports both OpenCode v1 and v2, but the two versions require **separate
+entry points**, not a single dual-export file:
 
-- **OpenCode v1** (tested through 1.18.32): Uses `@opencode-ai/plugin ^1.15.11`. The plugin
-  exposes `server`, which v1 hosts pick up directly.
-- **OpenCode v2**: Uses the `setup` export. The same `dist/index.js` works for both versions.
+- **OpenCode v1** (tested through 1.18.32): Uses `@opencode-ai/plugin ^1.15.11`. Entry
+  point is `dist/index.js`, exporting `{ id, server }`.
+- **OpenCode v2**: Entry point is `dist/v2.js`, exporting `{ id, setup }`.
+
+An earlier dual-export shape (`{ id, server, setup }` in one file) was tried first, but
+live testing against a real v2 host showed it gets misdetected — the plugin ID resolves
+as `-` and `setup` is never called. The two generations need physically separate entry
+files.
 
 ### Configuration difference
 
-v1 uses a singular `"plugin"` key:
+v1 uses a singular `"plugin"` key pointing at the package root:
 
 ```json
 {
@@ -110,13 +115,30 @@ v1 uses a singular `"plugin"` key:
 }
 ```
 
-v2 uses plural `"plugins"`:
+v2 uses a plural `"plugins"` key and needs a *directory* it can resolve as a package
+(a bare file path is rejected). For a **published install**, point it at the `/v2`
+subpath export:
 
 ```json
 {
-  "plugins": ["@zhafron/opencode-kiro-auth"]
+  "plugins": ["@zhafron/opencode-kiro-auth/v2"]
 }
 ```
+
+For a **local path-based dev install** (this repo checked out on disk), local paths
+can't resolve `package.json` `exports` subpaths the way a real npm-resolved import
+can, so use the `v2-plugin/` wrapper directory in this repo instead, which
+re-exports `dist/v2.js`:
+
+```json
+{
+  "plugin": ["/path/to/opencode-kiro-auth"],
+  "plugins": ["/path/to/opencode-kiro-auth/v2-plugin"]
+}
+```
+
+`v2-plugin/` is dev-only tooling and is not published to npm — published consumers
+should use the `/v2` subpath shown above instead.
 
 ### Known v2 limitations
 
