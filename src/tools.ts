@@ -1,8 +1,8 @@
 import { tool } from '@opencode-ai/plugin'
-import { fetchUsageReport } from './adapters/v1.js'
 import { AccountRepository } from './infrastructure/database/account-repository.js'
 import { AccountManager } from './plugin/accounts.js'
 import { formatWebSearchResults, kiroWebSearch } from './plugin/web-search.js'
+import { fetchUsageReport } from './usage.js'
 
 // Register Kiro's server-side web search as a custom tool, when enabled and the
 // active account is Pro (has a profileArn). Returns an empty object otherwise so

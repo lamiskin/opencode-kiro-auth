@@ -119,7 +119,8 @@ describe('v2 adapter', () => {
     expect(addCall.id).toBe('kiro')
     expect(addCall.name).toBe('Kiro')
     expect(addCall.activation).toBe('enabled')
-    expect(addCall.package).toBe('@ai-sdk/openai-compatible')
+    // MUST FIX #1: Correct package specifier per v2's ProviderPackage.Definition
+    expect(addCall.package).toBe('@opencode/ai/providers/openai-compatible')
     expect(addCall.settings?.baseURL).toBeDefined()
     expect(typeof addCall.settings?.baseURL).toBe('string')
   })
@@ -193,9 +194,9 @@ describe('v2 adapter', () => {
     const headers: Record<string, string> = ctx._providerEditor.addedProvider.headers
     const origin = new URL(baseURL).origin
 
-    // OpenCode v2 resolves @ai-sdk/openai-compatible by making a real HTTP
-    // request to settings.baseURL — there is no fetch-injection point for
-    // this path, so Kiro's request handling is fronted by an actual loopback
+    // OpenCode v2 resolves @opencode/ai/providers/openai-compatible by making a
+    // real HTTP request to settings.baseURL — there is no fetch-injection point
+    // for this path, so Kiro's request handling is fronted by an actual loopback
     // server instead of the mocked v1-style `fetch` override.
     //
     // The token is embedded in baseURL's path because v2 2.0.16 stores
@@ -208,26 +209,31 @@ describe('v2 adapter', () => {
     // The headers overlay carries the same token as a bearer header.
     expect(headers.authorization).toBe(`Bearer ${authToken}`)
 
-    // Test 1: no token in path and no auth header → 401
-    const noAuthResponse = await fetch(`${origin}/anything`, { method: 'GET' })
-    expect(noAuthResponse.status).toBe(401)
-    expect(noAuthResponse.headers.get('content-type')).toBe('application/json')
+    // SHOULD FIX #8: Route surface narrowed — only POST /v1/chat/completions accepted.
+    // Other paths return 404.
+    const noAuthResponse = await fetch(`${origin}/v1/chat/completions`, { method: 'GET' })
+    expect(noAuthResponse.status).toBe(404) // Wrong method for the route
+
+    // Test 1: no token in path and no auth header → 401 (on valid route)
+    const noAuthResponse2 = await fetch(`${origin}/v1/chat/completions`, { method: 'POST' })
+    expect(noAuthResponse2.status).toBe(401)
+    expect(noAuthResponse2.headers.get('content-type')).toBe('application/json')
 
     // Test 2: wrong token in both places → 401
-    const wrongTokenResponse = await fetch(`${origin}/k/wrong-token/anything`, {
-      method: 'GET',
+    const wrongTokenResponse = await fetch(`${origin}/k/wrong-token/v1/chat/completions`, {
+      method: 'POST',
       headers: { Authorization: 'Bearer wrong-token' }
     })
     expect(wrongTokenResponse.status).toBe(401)
 
-    // Test 3: token in the path alone (no header) → forwarded to
-    // RequestHandler. This is the path the real host exercises.
-    const pathAuthedResponse = await fetch(`${baseURL}/anything`, { method: 'GET' })
+    // Test 3: token in the path alone (no header) → forwarded to RequestHandler.
+    // This is the path the real host exercises.
+    const pathAuthedResponse = await fetch(`${baseURL}/v1/chat/completions`, { method: 'POST' })
     expect(pathAuthedResponse.status).not.toBe(401)
 
     // Test 4: token in the header alone (no path prefix) → also forwarded.
-    const headerAuthedResponse = await fetch(`${origin}/anything`, {
-      method: 'GET',
+    const headerAuthedResponse = await fetch(`${origin}/v1/chat/completions`, {
+      method: 'POST',
       headers: { Authorization: `Bearer ${authToken}` }
     })
     expect(headerAuthedResponse.status).not.toBe(401)
