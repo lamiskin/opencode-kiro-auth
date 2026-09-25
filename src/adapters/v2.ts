@@ -7,6 +7,7 @@
 
 import type { Location, Model, Provider } from '@opencode/plugin'
 import type { Tool } from '@opencode/schema/tool'
+import { z } from 'zod'
 
 import * as http from 'node:http'
 import { HostPort } from '../host/port.js'
@@ -131,9 +132,32 @@ function createLocalProxyServer(runtime: Runtime): Promise<LocalProxyServer> {
     const tokenPath = `/k/${token}`
 
     const server = http.createServer(async (req, res) => {
+      // SHOULD FIX #8: Narrow the route surface — only accept POST to chat completions.
+      // The openai-compatible provider calls /v1/chat/completions (or similar).
+      // Return 404 for anything else to reduce attack surface.
+      // Also account for the token prefix in the path (e.g., /k/uuid/v1/chat/completions).
+      const reqPath = req.url || '/'
+      // Strip any /k/<token> prefix for route matching — don't assume it's our token
+      // (we'll auth-check separately after route validation)
+      const pathWithoutTokenPrefix = reqPath.replace(/^\/k\/[^/]+/, '') || '/'
+      const isChatCompletions =
+        req.method === 'POST' &&
+        (pathWithoutTokenPrefix === '/v1/chat/completions' ||
+          pathWithoutTokenPrefix.startsWith('/v1/chat/completions?'))
+      if (!isChatCompletions) {
+        res.statusCode = 404
+        res.setHeader('Content-Type', 'application/json')
+        res.end(JSON.stringify({ error: { message: 'Not Found' } }))
+        return
+      }
+
       // Authenticate: accept the token from the URL path prefix or from a
       // Bearer header. Either alone is sufficient.
-      const reqPath = req.url || '/'
+      // TODO (v2 auth verification): The path-prefix token form is a fallback.
+      // Once the header auth (via Provider.Info.headers overlay) is confirmed working
+      // with the correct package specifier, the path-prefix can be removed — it's
+      // leakier (appears in req.url, logs) than the header form. Keeping both for
+      // now since we can't live-test from here.
       const pathAuthed = reqPath === tokenPath || reqPath.startsWith(`${tokenPath}/`)
       const authHeader = req.headers.authorization
       const headerAuthed =
@@ -159,21 +183,27 @@ function createLocalProxyServer(runtime: Runtime): Promise<LocalProxyServer> {
         const body = Buffer.concat(chunks)
         // Strip the token path prefix so the forwarded URL looks like the
         // upstream path (RequestHandler reads the model out of it).
+        // SHOULD FIX #9: The header-forwarding loop is dead code.
+        // handleKiroRequest only reads init?.body, never init?.headers.
+        // Headers are not forwarded — RequestHandler reconstructs them from auth.
         const forwardPath = pathAuthed ? reqPath.slice(tokenPath.length) || '/' : reqPath
         const url = `http://127.0.0.1${forwardPath}`
-        const headers: Record<string, string> = {}
-        for (const [key, value] of Object.entries(req.headers)) {
-          if (typeof value === 'string') headers[key] = value
-        }
-        // Remove authorization header before forwarding — RequestHandler
-        // adds its own auth based on account credentials
-        delete headers.authorization
         const bodyStr = body.length ? body.toString('utf8') : undefined
 
+        // Cap request body size to prevent unbounded memory growth
+        const MAX_BODY_SIZE = 50 * 1024 * 1024 // 50MB
+        if (body.length > MAX_BODY_SIZE) {
+          res.statusCode = 413
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify({ error: { message: 'Payload too large' } }))
+          return
+        }
+
         try {
+          // Pass empty headers object — RequestHandler handles auth itself
           const response: Response = await runtime.requestHandler.handleForced(url, {
             method: req.method,
-            headers,
+            headers: {},
             body: req.method !== 'GET' && req.method !== 'HEAD' ? bodyStr : undefined
           })
 
@@ -192,26 +222,56 @@ function createLocalProxyServer(runtime: Runtime): Promise<LocalProxyServer> {
             return
           }
           const reader = response.body.getReader()
+          let aborted = false
+
+          // MUST FIX #4: Handle client disconnect to prevent leaked SDK streams.
+          // When the client closes the connection, cancel the upstream stream.
+          const cleanup = () => {
+            if (!aborted) {
+              aborted = true
+              reader.cancel().catch(() => {}) // Ignore cancel errors
+            }
+          }
+          res.on('close', cleanup)
+          req.on('aborted', cleanup)
+
           try {
             while (true) {
               const { done, value } = await reader.read()
               if (done) break
+              if (aborted) break // Exit early if client disconnected
               if (value) res.write(Buffer.from(value))
             }
           } finally {
+            res.off('close', cleanup)
+            req.off('aborted', cleanup)
             res.end()
           }
         } catch (e) {
           logger.error('[v2] Local proxy request failed', e instanceof Error ? e : undefined)
-          res.statusCode = 500
-          res.setHeader('Content-Type', 'application/json')
-          res.end(JSON.stringify({ error: { message: String(e) } }))
+          // MUST FIX #3: Check headersSent before attempting to set status/headers.
+          // If the SDK stream already started writing, this throws ERR_HTTP_HEADS_SENT.
+          if (!res.headersSent) {
+            res.statusCode = 500
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ error: { message: String(e) } }))
+          } else {
+            res.destroy()
+          }
         }
       })
     })
 
     server.on('error', reject)
+    // MUST FIX #5: Replace reject-handler with persistent logger after listen resolves.
+    // Once the promise settles, subsequent errors would call reject on an already-
+    // settled promise (silent no-op) and throw if there's no other listener.
+    // MUST FIX #5: Replace reject-handler with persistent logger after listen resolves.
+    // Also add close handler to log server shutdown.
     server.listen(0, '127.0.0.1', () => {
+      server.removeAllListeners('error') // Remove the reject handler
+      server.on('error', (err) => logger.error('[v2] proxy server error', err))
+      server.on('close', () => logger.log('[v2] Local proxy server closed'))
       const address = server.address()
       const port = address && typeof address === 'object' ? address.port : 0
       const baseURL = `http://127.0.0.1:${port}${tokenPath}`
@@ -346,7 +406,9 @@ function mapTools(runtime: Runtime): ToolInfo[] {
     tools.push({
       name,
       description: toolAny.description || '',
-      input: toolAny.args as Tool.ValueSchema | undefined,
+      // MUST FIX #6: toolAny.args is a raw zod shape object, not a Tool.ValueSchema.
+      // Tool.ValueSchema requires a ~standard key (from z.object(shape)), so wrap it.
+      input: toolAny.args ? z.object(toolAny.args) : undefined,
       execute: wrappedExecute
     })
   }
@@ -380,7 +442,8 @@ export async function kiroSetup(ctx: V2Context): Promise<(() => void | Promise<v
 
   // Set up auth handler with the port
   runtime.authHandler.setPort(port)
-  runtime.authHandler.setAccountManager(runtime.accountManager)
+  // SHOULD FIX #11: remove redundant setAccountManager — createRuntime already does this at line 38
+  // runtime.authHandler.setAccountManager(runtime.accountManager)
 
   const registrations: Array<{ dispose(): void | Promise<void> }> = []
 
@@ -398,13 +461,17 @@ export async function kiroSetup(ctx: V2Context): Promise<(() => void | Promise<v
         id: 'kiro' as Provider.ID,
         name: 'Kiro',
         activation: 'enabled' as const,
-        package: '@ai-sdk/openai-compatible' as Provider.Package,
+        // MUST FIX #1: @ai-sdk/openai-compatible has no 'model' export.
+        // The correct package per v2's ProviderPackage.Definition is:
+        package: '@opencode/ai/providers/openai-compatible' as Provider.Package,
         settings: {
           baseURL: localBaseURL,
           apiKey: authToken
         },
         // baseURL carries the token too; this overlay is the header path,
         // which settings.apiKey alone does not reach on v2 2.0.16.
+        // Once bug #1 is fixed and header auth confirmed working, the path
+        // prefix in baseURL can be removed (see TODO above at auth check).
         headers: {
           authorization: `Bearer ${authToken}`
         }
@@ -442,10 +509,22 @@ export async function kiroSetup(ctx: V2Context): Promise<(() => void | Promise<v
     directory
   })
 
+  // SHOULD FIX #7: Add idempotency guard + reversed disposal order (LIFO).
+  let disposed = false
+
   // Return cleanup function
   return async () => {
+    if (disposed) {
+      logger.warn('[v2] Cleanup called twice, ignoring duplicate')
+      return
+    }
+    disposed = true
+
+    // Reverse disposal order — dependents before what they depend on.
+    // Proxy server closed LAST relative to provider/tool registrations.
     logger.log('[v2] Cleanup starting', { registrations: registrations.length })
-    for (const reg of registrations) {
+    const reversed = [...registrations].reverse()
+    for (const reg of reversed) {
       try {
         await reg.dispose()
       } catch (e) {
