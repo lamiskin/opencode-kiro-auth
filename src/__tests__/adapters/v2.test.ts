@@ -209,10 +209,20 @@ describe('v2 adapter', () => {
     // The headers overlay carries the same token as a bearer header.
     expect(headers.authorization).toBe(`Bearer ${authToken}`)
 
-    // SHOULD FIX #8: Route surface narrowed — only POST /v1/chat/completions accepted.
-    // Other paths return 404.
+    // Route surface narrowed — only POST to chat completions accepted.
+    // Other paths and methods return 404.
     const noAuthResponse = await fetch(`${origin}/v1/chat/completions`, { method: 'GET' })
     expect(noAuthResponse.status).toBe(404) // Wrong method for the route
+
+    const unknownRouteResponse = await fetch(`${baseURL}/v1/models`, { method: 'POST' })
+    expect(unknownRouteResponse.status).toBe(404)
+
+    // Regression: the host's openai-compatible provider appends
+    // "/chat/completions" to baseURL verbatim, with no /v1 segment. A /v1-only
+    // route guard 404'd every real chat.
+    const bareRouteResponse = await fetch(`${baseURL}/chat/completions`, { method: 'POST' })
+    expect(bareRouteResponse.status).not.toBe(404)
+    expect(bareRouteResponse.status).not.toBe(401)
 
     // Test 1: no token in path and no auth header → 401 (on valid route)
     const noAuthResponse2 = await fetch(`${origin}/v1/chat/completions`, { method: 'POST' })

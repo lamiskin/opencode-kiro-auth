@@ -133,19 +133,32 @@ function createLocalProxyServer(runtime: Runtime): Promise<LocalProxyServer> {
     const tokenPath = `/k/${token}`
 
     const server = http.createServer(async (req, res) => {
-      // SHOULD FIX #8: Narrow the route surface — only accept POST to chat completions.
-      // The openai-compatible provider calls /v1/chat/completions (or similar).
+      // Narrow the route surface — only accept POST to chat completions.
       // Return 404 for anything else to reduce attack surface.
-      // Also account for the token prefix in the path (e.g., /k/uuid/v1/chat/completions).
+      // Also account for the token prefix in the path (e.g., /k/uuid/chat/completions).
+      //
+      // Both the bare and /v1-prefixed forms are accepted. OpenCode v2's
+      // openai-compatible provider appends the path to baseURL verbatim
+      // (`url: ({ path }) => \`${baseURL}${path}\`` with path
+      // "/chat/completions"), and our baseURL has no /v1 segment — so the real
+      // request arrives as /chat/completions. An earlier /v1-only guard 404'd
+      // every chat, surfacing in the host as "Not Found" with no log line.
+      // The /v1 form stays accepted because a caller may set a /v1 baseURL.
       const reqPath = req.url || '/'
       // Strip any /k/<token> prefix for route matching — don't assume it's our token
       // (we'll auth-check separately after route validation)
       const pathWithoutTokenPrefix = reqPath.replace(/^\/k\/[^/]+/, '') || '/'
+      const routeWithoutQuery = pathWithoutTokenPrefix.split('?', 1)[0]
       const isChatCompletions =
         req.method === 'POST' &&
-        (pathWithoutTokenPrefix === '/v1/chat/completions' ||
-          pathWithoutTokenPrefix.startsWith('/v1/chat/completions?'))
+        (routeWithoutQuery === '/chat/completions' || routeWithoutQuery === '/v1/chat/completions')
       if (!isChatCompletions) {
+        // Logged, because a silent 404 here is indistinguishable from a host-side
+        // routing failure — the host reports only the "Not Found" message body.
+        logger.warn('[v2] Local proxy rejected unroutable request', {
+          method: req.method,
+          route: routeWithoutQuery
+        })
         res.statusCode = 404
         res.setHeader('Content-Type', 'application/json')
         res.end(JSON.stringify({ error: { message: 'Not Found' } }))
