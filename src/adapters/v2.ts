@@ -57,6 +57,7 @@ interface ToolInfo {
   name: string
   description: string
   input?: Tool.ValueSchema
+  output?: Tool.ValueSchema
   execute: (args: unknown, context: unknown) => Promise<Tool.Result>
 }
 
@@ -409,6 +410,8 @@ function mapTools(runtime: Runtime): ToolInfo[] {
       // MUST FIX #6: toolAny.args is a raw zod shape object, not a Tool.ValueSchema.
       // Tool.ValueSchema requires a ~standard key (from z.object(shape)), so wrap it.
       input: toolAny.args ? z.object(toolAny.args) : undefined,
+      // output describes the Tool.Result output field — v1 tools return strings
+      output: z.string(),
       execute: wrappedExecute
     })
   }
