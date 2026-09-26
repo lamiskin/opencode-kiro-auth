@@ -1,5 +1,5 @@
 import z from 'zod'
-import { EffortSchema, RegionSchema } from './config/schema'
+import { AccountSelectionStrategySchema, EffortSchema, RegionSchema } from './config/schema'
 
 export type KiroAuthMethod = 'idc' | 'desktop'
 export type KiroRegion = z.infer<typeof RegionSchema>
@@ -128,4 +128,4 @@ export interface SdkPreparedRequest {
   effort?: Effort
 }
 
-export type AccountSelectionStrategy = 'sticky' | 'round-robin' | 'lowest-usage'
+export type AccountSelectionStrategy = z.infer<typeof AccountSelectionStrategySchema>

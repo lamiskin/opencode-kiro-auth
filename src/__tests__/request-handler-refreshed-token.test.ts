@@ -73,7 +73,10 @@ test('sends the access token obtained by refreshIfNeeded, not the pre-refresh sn
     enable_log_api_request: false
   }
 
-  const handler: any = new RequestHandler(accountManager, config, repository)
+  const handler: any = new RequestHandler(accountManager, config, repository, {
+    notify: () => {},
+    reauthorize: async () => {}
+  })
   handler.accountSelector = { selectHealthyAccount: async () => account }
   handler.tokenRefresher = {
     // Mirrors the real refresher: the account is updated in place.
@@ -98,8 +101,7 @@ test('sends the access token obtained by refreshIfNeeded, not the pre-refresh sn
 
   const response = await handler.handle(
     'https://q.us-east-1.amazonaws.com/models/claude-sonnet-4-5',
-    { body: '{}' },
-    () => {}
+    { body: '{}' }
   )
 
   expect(response.status).toBe(200)

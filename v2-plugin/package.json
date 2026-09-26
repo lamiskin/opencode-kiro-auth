@@ -1,0 +1,6 @@
+{
+  "name": "opencode-kiro-auth-v2-local",
+  "private": true,
+  "type": "module",
+  "main": "./index.js"
+}

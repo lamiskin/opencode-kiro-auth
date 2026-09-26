@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kiro Usage</title>
+    <style>
+        body {
+            font-family: var(--oc-font, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
+            margin: 0;
+            padding: 16px;
+            background: var(--oc-bg, #1a1a1a);
+            color: var(--oc-fg, #e0e0e0);
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        h1 {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--oc-primary-text, var(--oc-fg, #e0e0e0));
+        }
+        .refresh-btn {
+            background: var(--oc-elevated, #3a3a3a);
+            border: 1px solid var(--oc-border, #555);
+            color: var(--oc-fg, #e0e0e0);
+            padding: 6px 12px;
+            border-radius: var(--oc-radius, 4px);
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .refresh-btn:hover {
+            background: var(--oc-hover, #444);
+        }
+        .account {
+            background: var(--oc-elevated, #2a2a2a);
+            border-radius: var(--oc-radius, 6px);
+            padding: 12px;
+            margin-bottom: 10px;
+            border: 1px solid var(--oc-border, #333);
+        }
+        .email {
+            font-weight: 500;
+            margin-bottom: 8px;
+            color: var(--oc-primary-text, var(--oc-fg, #e0e0e0));
+        }
+        .progress-bar {
+            height: 8px;
+            background: var(--oc-muted-surface, #444);
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 8px 0;
+        }
+        .progress-fill {
+            height: 100%;
+            border-radius: 4px;
+        }
+        .progress-fill.green { background: var(--oc-success, #2ecc71); }
+        .progress-fill.orange { background: var(--oc-warning, #f39c12); }
+        .progress-fill.red { background: var(--oc-error, #e74c3c); }
+        .usage-text {
+            font-size: 14px;
+            margin-top: 4px;
+            color: var(--oc-info-text, var(--oc-fg, #e0e0e0));
+        }
+        .error-text {
+            color: var(--oc-error-text, #e74c3c);
+            font-size: 14px;
+        }
+        .summary {
+            background: var(--oc-elevated, #2a2a2a);
+            border-radius: var(--oc-radius, 6px);
+            padding: 12px;
+            margin-top: 16px;
+            font-weight: 500;
+            color: var(--oc-primary-text, var(--oc-fg, #e0e0e0));
+            border: 1px solid var(--oc-border, #333);
+        }
+        .last-updated {
+            text-align: center;
+            font-size: 12px;
+            color: var(--oc-muted, #888);
+            margin-top: 16px;
+        }
+        .loading, .error-message {
+            text-align: center;
+            padding: 40px;
+            color: var(--oc-muted, #888);
+        }
+        .error-message {
+            color: var(--oc-error-text, #e74c3c);
+        }
+        .pace {
+            margin-top: 16px;
+        }
+        .pace-label {
+            font-size: 14px;
+            margin-bottom: 8px;
+            color: var(--oc-info-text, var(--oc-fg, #e0e0e0));
+        }
+        .pace-bar {
+            position: relative;
+            height: 10px;
+            background: var(--oc-muted-surface, #444);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .pace-bar-fill {
+            position: absolute;
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+        .pace-bar-fill.green { background: var(--oc-success, #2ecc71); }
+        .pace-bar-fill.red { background: var(--oc-error, #e74c3c); }
+        .pace-marker {
+            position: absolute;
+            width: 2px;
+            height: 100%;
+            background: var(--oc-fg, #fff);
+            transform: translateX(-50%);
+        }
+        .pace-status.ok { color: var(--oc-success-text, #2ecc71); }
+        .pace-status.over { color: var(--oc-error-text, #e74c3c); }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Kiro Usage</h1>
+        <button class="refresh-btn" id="refresh">Refresh</button>
+    </div>
+    <div id="content"></div>
+    <script src="main.js"></script>
+</body>
+</html>

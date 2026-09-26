@@ -1,11 +1,57 @@
 # OpenCode Kiro Auth Plugin
 
-[![npm version](https://img.shields.io/npm/v/@zhafron/opencode-kiro-auth)](https://www.npmjs.com/package/@zhafron/opencode-kiro-auth)
-[![npm downloads](https://img.shields.io/npm/dm/@zhafron/opencode-kiro-auth)](https://www.npmjs.com/package/@zhafron/opencode-kiro-auth)
-[![license](https://img.shields.io/npm/l/@zhafron/opencode-kiro-auth)](https://www.npmjs.com/package/@zhafron/opencode-kiro-auth)
-
 OpenCode plugin for AWS Kiro (CodeWhisperer) providing access to Claude Sonnet and Haiku
 models with substantial trial quotas.
+
+This is a personal development fork of
+[tickernelz/opencode-kiro-auth](https://github.com/tickernelz/opencode-kiro-auth), named `@lamiskin/opencode-kiro-auth-dev` in `package.json` (not published to npm) to avoid
+conflicts if it ever is. See
+[Fork Differences](#fork-differences-vs-upstream) for what changed.
+
+## Fork Differences vs Upstream
+
+On top of upstream `tickernelz/opencode-kiro-auth`, this fork adds:
+
+- **Dynamic model catalog**: Fetches context windows and credit-rate multipliers from
+  Kiro's live model list / `kiro.dev/docs/models.md` on startup (24h cache), instead of
+  hardcoded values, with a bundled fallback if the fetch fails.
+- **GPT-5.6 / thinking model support**: Correct `reasoning.effort` / `reasoning.mode`
+  request path for OpenAI-style models, separate from Claude's `output_config.effort`.
+- **Credits-used footer**: Displays the Kiro credits consumed by each response inline.
+- **`kiro-usage` CLI script** and an **OpenChamber usage panel extension** (see below) —
+  neither exists upstream.
+- **Streaming fix**: Cache token usage (`cache_creation_input_tokens` /
+  `cache_read_input_tokens`) is now passed through correctly in OpenAI-format streaming.
+- **Auth/sync fixes**: Converges on Kiro CLI's own client registration instead of a stale
+  one, ignores legacy Q CLI rows, fixes a stale placeholder-email sweep pattern, and
+  discovers context windows from Kiro's live model catalog.
+- **Package renamed** to `@lamiskin/opencode-kiro-auth-dev` for local development so it
+  doesn't collide with the upstream package on npm.
+
+## Usage Tracking
+
+### `kiro-usage` CLI
+
+`scripts/kiro-usage.mjs` prints Kiro credit usage across all configured accounts,
+reading the same `~/.config/opencode/kiro.db` the plugin uses.
+
+```bash
+node scripts/kiro-usage.mjs          # human-readable usage report
+node scripts/kiro-usage.mjs --json   # machine-readable usage entries
+```
+
+Requires the project to be built first (`npm run build`), since it imports from `dist/`.
+
+### OpenChamber usage panel
+
+`openchamber-kiro-usage/` is an [OpenChamber](https://github.com/openchamber) extension
+that adds a rail panel showing per-account Kiro credit usage with progress bars, an
+overall summary, and a workday pace indicator. It badges the rail icon once usage
+exceeds 80% and refreshes every 5 minutes or on demand.
+
+It shells out to this repo's `scripts/kiro-usage.mjs --json`, so it only works when kept
+as a sibling folder inside the same checkout as this plugin — it is not a standalone
+install. See `openchamber-kiro-usage/README.md` for build/load instructions.
 
 ## Features
 
@@ -44,6 +90,65 @@ model that supports reasoning effort. Run `/models` to pick one.
 Defining `provider.kiro.models` yourself replaces the plugin's registry entirely.
 Only do that to rename or restrict models, and see the reasoning flags below if
 any of them are `-thinking` models.
+
+## OpenCode Version Support
+
+This plugin supports both OpenCode v1 and v2, but the two versions require **separate
+entry points**, not a single dual-export file:
+
+- **OpenCode v1** (tested through 1.18.32): Uses `@opencode-ai/plugin ^1.15.11`. Entry
+  point is `dist/index.js`, exporting `{ id, server }`.
+- **OpenCode v2**: Entry point is `dist/v2.js`, exporting `{ id, setup }`.
+
+An earlier dual-export shape (`{ id, server, setup }` in one file) was tried first, but
+live testing against a real v2 host showed it gets misdetected — the plugin ID resolves
+as `-` and `setup` is never called. The two generations need physically separate entry
+files.
+
+### Configuration difference
+
+v1 uses a singular `"plugin"` key pointing at the package root:
+
+```json
+{
+  "plugin": ["@zhafron/opencode-kiro-auth"]
+}
+```
+
+v2 uses a plural `"plugins"` key and needs a *directory* it can resolve as a package
+(a bare file path is rejected). For a **published install**, point it at the `/v2`
+subpath export:
+
+```json
+{
+  "plugins": ["@zhafron/opencode-kiro-auth/v2"]
+}
+```
+
+For a **local path-based dev install** (this repo checked out on disk), local paths
+can't resolve `package.json` `exports` subpaths the way a real npm-resolved import
+can, so use the `v2-plugin/` wrapper directory in this repo instead, which
+re-exports `dist/v2.js`:
+
+```json
+{
+  "plugin": ["/path/to/opencode-kiro-auth"],
+  "plugins": ["/path/to/opencode-kiro-auth/v2-plugin"]
+}
+```
+
+`v2-plugin/` is dev-only tooling and is not published to npm — published consumers
+should use the `/v2` subpath shown above instead.
+
+### Known v2 limitations
+
+1. **No toast/notification capability**: v2's server-side PluginContext lacks `ctx.notify`
+   and `ctx.toast`. Under v2, startup usage summaries and re-authentication prompts that
+   show as toasts under v1 are logged instead (visible in plugin/server logs).
+
+2. **IdC OAuth re-authentication not implemented**: The v1 IdC prompt-based re-auth flow
+   hasn't been ported yet. Under v2, rely on the Kiro CLI credential sync path (fully
+   supported under both v1 and v2) rather than IdC OAuth re-auth.
 
 ### Thinking Effort Configuration
 
@@ -247,7 +352,6 @@ Edit `~/.config/opencode/kiro.json`:
 - `enable_log_api_request`: Enable detailed API request logging. Request logs
   include the resolved `additionalModelRequestFields`, so this is how you confirm
   which effort level actually went out on the wire.
-
 ## Storage
 
 **Linux/macOS:**

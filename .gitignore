@@ -1,4 +1,5 @@
 node_modules/
+openchamber-kiro-usage/node_modules/
 dist/
 *.log
 .DS_Store
@@ -9,3 +10,4 @@ dist/
 .codegraph
 .cortexkit
 .serena/
+.kiro/

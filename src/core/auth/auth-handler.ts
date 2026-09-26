@@ -1,4 +1,5 @@
 import type { AuthHook } from '@opencode-ai/plugin'
+import type { HostPort } from '../../host/port.js'
 import type { AccountRepository } from '../../infrastructure/database/account-repository.js'
 import { RegionSchema } from '../../plugin/config/schema.js'
 import * as logger from '../../plugin/logger.js'
@@ -7,18 +8,21 @@ import { UsageTracker } from '../account/usage-tracker.js'
 import { IdcAuthMethod } from './idc-auth-method.js'
 import { TokenRefresher } from './token-refresher.js'
 
-type ToastFunction = (message: string, variant: 'info' | 'warning' | 'success' | 'error') => void
-
 export class AuthHandler {
   private accountManager?: any
   private startupUsageFetched = false
+  private port?: HostPort
 
   constructor(
     private config: any,
     private repository: AccountRepository
   ) {}
 
-  async initialize(showToast?: ToastFunction): Promise<void> {
+  setPort(port: HostPort): void {
+    this.port = port
+  }
+
+  async initialize(): Promise<void> {
     const { syncFromKiroCli } = await import('../../plugin/sync/kiro-cli.js')
 
     logger.log('Auth init', { autoSyncKiroCli: !!this.config.auto_sync_kiro_cli })
@@ -38,17 +42,17 @@ export class AuthHandler {
     // delays the auth loader, and falls back to the stored value on error.
     void (async () => {
       try {
-        await this.refreshUsageFromApi(showToast)
+        await this.refreshUsageFromApi()
       } catch (e) {
         logger.warn('Startup usage refresh failed', {
           error: e instanceof Error ? e.message : String(e)
         })
       }
-      this.logUsageSummary(showToast)
+      this.logUsageSummary()
     })()
   }
 
-  async refreshUsageFromApi(showToast?: ToastFunction): Promise<void> {
+  async refreshUsageFromApi(): Promise<void> {
     if (!this.accountManager || this.config.usage_tracking_enabled === false) return
     if (this.startupUsageFetched) return
     this.startupUsageFetched = true
@@ -61,7 +65,7 @@ export class AuthHandler {
       this.repository
     )
     const usageTracker = new UsageTracker(this.config, this.accountManager, this.repository)
-    const toast: ToastFunction = showToast ?? (() => {})
+    const notify = this.port?.notify ?? (() => {})
 
     for (const acc of this.accountManager.getAccounts()) {
       if (!acc.isHealthy) continue
@@ -69,7 +73,7 @@ export class AuthHandler {
         const { account: usable } = await tokenRefresher.refreshIfNeeded(
           acc,
           this.accountManager.toAuthDetails(acc),
-          toast
+          notify
         )
         if (!usable.isHealthy) continue
         await usageTracker.syncNow(usable, this.accountManager.toAuthDetails(usable))
@@ -82,24 +86,23 @@ export class AuthHandler {
     }
   }
 
-  private logUsageSummary(showToast?: ToastFunction): void {
+  private logUsageSummary(): void {
     if (!this.accountManager) return
     const accounts = this.accountManager.getAccounts()
     if (!accounts.length) return
+    const notify = this.port?.notify ?? (() => {})
 
     for (const acc of accounts) {
       const { used, limit, pct } = summarizeUsage(acc.usedCount ?? 0, acc.limitCount ?? 0)
       if (limit > 0) {
         const msg = `Kiro usage (${acc.email}): ${used}/${limit} (${pct}%)`
         logger.log(msg)
-        if (showToast) {
-          const variant = pct >= 90 ? 'warning' : 'info'
-          setTimeout(() => showToast(msg, variant), 3000)
-        }
+        const variant = pct >= 90 ? 'warning' : 'info'
+        setTimeout(() => notify(msg, variant), 3000)
       } else if (used > 0) {
         const msg = `Kiro usage (${acc.email}): ${used} requests used`
         logger.log(msg)
-        if (showToast) setTimeout(() => showToast(msg, 'info'), 3000)
+        setTimeout(() => notify(msg, 'info'), 3000)
       }
     }
   }

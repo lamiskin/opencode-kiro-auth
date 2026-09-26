@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import { existsSync, promises as fs } from 'node:fs'
 import lockfile from 'proper-lockfile'
 import { isPermanentError } from '../health'
@@ -37,16 +36,6 @@ export async function withDatabaseLock<T>(dbPath: string, fn: () => Promise<T>):
       }
     }
   }
-}
-
-export function createDeterministicId(
-  email: string,
-  authMethod: string,
-  clientId?: string,
-  profileArn?: string
-): string {
-  const parts = [email, authMethod, clientId || '', profileArn || ''].join(':')
-  return createHash('sha256').update(parts).digest('hex')
 }
 
 export function mergeAccounts(
