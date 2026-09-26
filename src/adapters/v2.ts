@@ -5,9 +5,9 @@
  * Uses type-only imports from @opencode/plugin to avoid runtime dependencies.
  */
 
+import { tool } from '@opencode-ai/plugin'
 import type { Location, Model, Provider } from '@opencode/plugin'
 import type { Tool } from '@opencode/schema/tool'
-import { z } from 'zod'
 
 import * as http from 'node:http'
 import { HostPort } from '../host/port.js'
@@ -422,9 +422,9 @@ function mapTools(runtime: Runtime): ToolInfo[] {
       description: toolAny.description || '',
       // MUST FIX #6: toolAny.args is a raw zod shape object, not a Tool.ValueSchema.
       // Tool.ValueSchema requires a ~standard key (from z.object(shape)), so wrap it.
-      input: toolAny.args ? z.object(toolAny.args) : undefined,
+      input: toolAny.args ? tool.schema.object(toolAny.args) : undefined,
       // output describes the Tool.Result output field — v1 tools return strings
-      output: z.string(),
+      output: tool.schema.string(),
       execute: wrappedExecute
     })
   }
