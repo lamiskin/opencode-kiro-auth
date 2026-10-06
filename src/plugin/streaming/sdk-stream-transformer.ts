@@ -15,12 +15,22 @@ interface PendingToolCall {
   input: string
 }
 
+interface StreamFinalUsage {
+  meteringUsage: number | null
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+  cacheReadInputTokens?: number
+  cacheWriteInputTokens?: number
+  contextUsagePercentage?: number
+}
+
 export async function* transformSdkStream(
   sdkResponse: any,
   model: string,
   conversationId: string,
   toolNameMap?: ToolNameMap
-): AsyncGenerator<any> {
+): AsyncGenerator<any, StreamFinalUsage, undefined> {
   const thinkingRequested = true
 
   const streamState: StreamState = {
@@ -45,6 +55,8 @@ export async function* transformSdkStream(
   let inputTokens = 0
   let totalTokens = 0
   let tokenUsageReceived = false
+  let cacheReadInputTokens: number | undefined
+  let cacheWriteInputTokens: number | undefined
   let contextUsagePercentage: number | null = null
   let meteringUsage: number | null = null
   const toolCallFragments = new Map<string, PendingToolCall>()
@@ -197,6 +209,12 @@ export async function* transformSdkStream(
             totalTokens = usage.totalTokens
           }
           tokenUsageReceived = true
+          if (typeof usage.cacheReadInputTokens === 'number') {
+            cacheReadInputTokens = usage.cacheReadInputTokens
+          }
+          if (typeof usage.cacheWriteInputTokens === 'number') {
+            cacheWriteInputTokens = usage.cacheWriteInputTokens
+          }
           if (typeof usage.contextUsagePercentage === 'number') {
             contextUsagePercentage = usage.contextUsagePercentage
           }
@@ -350,8 +368,8 @@ export async function* transformSdkStream(
             input_tokens: inputTokens,
             output_tokens: outputTokens,
             total_tokens: totalTokens || inputTokens + outputTokens,
-            cache_creation_input_tokens: 0,
-            cache_read_input_tokens: 0
+            cache_creation_input_tokens: cacheWriteInputTokens ?? 0,
+            cache_read_input_tokens: cacheReadInputTokens ?? 0
           }
         },
         conversationId,
@@ -366,5 +384,15 @@ export async function* transformSdkStream(
     }
   } catch (e) {
     throw e
+  }
+
+  return {
+    meteringUsage,
+    inputTokens,
+    outputTokens,
+    totalTokens: totalTokens || inputTokens + outputTokens,
+    cacheReadInputTokens,
+    cacheWriteInputTokens,
+    contextUsagePercentage: contextUsagePercentage ?? undefined
   }
 }

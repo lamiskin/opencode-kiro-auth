@@ -1,5 +1,5 @@
 import { restoreToolName } from '../../infrastructure/transformers/tool-transformer.js'
-import { debug } from '../../plugin/logger.js'
+import { debug, logApiUsage } from '../../plugin/logger.js'
 import { transformSdkStream } from '../../plugin/streaming/sdk-stream-transformer.js'
 import type { ToolNameMap } from '../../plugin/types.js'
 
@@ -18,30 +18,55 @@ export class ResponseHandler {
     model: string,
     conversationId: string,
     streaming: boolean,
-    toolNameMap?: ToolNameMap
+    toolNameMap?: ToolNameMap,
+    apiTimestamp?: string | null
   ): Promise<Response> {
     if (streaming) {
-      return this.handleSdkStreaming(sdkResponse, model, conversationId, toolNameMap)
+      return this.handleSdkStreaming(sdkResponse, model, conversationId, toolNameMap, apiTimestamp)
     }
-    return this.handleSdkNonStreaming(sdkResponse, model, conversationId, toolNameMap)
+    return this.handleSdkNonStreaming(sdkResponse, model, conversationId, toolNameMap, apiTimestamp)
   }
 
   private async handleSdkStreaming(
     sdkResponse: any,
     model: string,
     conversationId: string,
-    toolNameMap?: ToolNameMap
+    toolNameMap?: ToolNameMap,
+    apiTimestamp?: string | null
   ): Promise<Response> {
     const s = transformSdkStream(sdkResponse, model, conversationId, toolNameMap)
+
+    // Stream incrementally: iterate manually inside start(c) to capture final return value
+    // while still allowing true SSE streaming (time-to-first-token)
     return new Response(
       new ReadableStream({
         async start(c) {
           try {
-            for await (const e of s) {
-              c.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(e)}\n\n`))
+            while (true) {
+              const iterResult = await s.next()
+              if (iterResult.done) {
+                // Log usage data after stream completes (only if apiTimestamp is provided)
+                const finalUsage = iterResult.value
+                if (apiTimestamp && finalUsage) {
+                  logApiUsage(
+                    {
+                      inputTokens: finalUsage.inputTokens,
+                      outputTokens: finalUsage.outputTokens,
+                      totalTokens: finalUsage.totalTokens,
+                      cacheReadInputTokens: finalUsage.cacheReadInputTokens,
+                      cacheWriteInputTokens: finalUsage.cacheWriteInputTokens,
+                      contextUsagePercentage: finalUsage.contextUsagePercentage,
+                      credits: finalUsage.meteringUsage ?? undefined
+                    },
+                    apiTimestamp
+                  )
+                }
+                c.enqueue(new TextEncoder().encode('data: [DONE]\n\n'))
+                c.close()
+                break
+              }
+              c.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(iterResult.value)}\n\n`))
             }
-            c.enqueue(new TextEncoder().encode('data: [DONE]\n\n'))
-            c.close()
           } catch (err) {
             c.error(err)
           }
@@ -55,7 +80,8 @@ export class ResponseHandler {
     sdkResponse: any,
     model: string,
     conversationId: string,
-    toolNameMap?: ToolNameMap
+    toolNameMap?: ToolNameMap,
+    apiTimestamp?: string | null
   ): Promise<Response> {
     // For non-streaming SDK responses, collect all events
     let content = ''
@@ -64,6 +90,10 @@ export class ResponseHandler {
     let inputTokens = 0
     let outputTokens = 0
     let totalTokens = 0
+    let cacheReadInputTokens: number | undefined
+    let cacheWriteInputTokens: number | undefined
+    let contextUsagePercentage: number | undefined
+    let meteringUsage: number | undefined
 
     const eventStream = sdkResponse.generateAssistantResponseResponse
     if (eventStream) {
@@ -103,8 +133,18 @@ export class ResponseHandler {
           if (typeof usage.totalTokens === 'number') {
             totalTokens = usage.totalTokens
           }
+          if (typeof usage.cacheReadInputTokens === 'number') {
+            cacheReadInputTokens = usage.cacheReadInputTokens
+          }
+          if (typeof usage.cacheWriteInputTokens === 'number') {
+            cacheWriteInputTokens = usage.cacheWriteInputTokens
+          }
+          if (typeof usage.contextUsagePercentage === 'number') {
+            contextUsagePercentage = usage.contextUsagePercentage
+          }
         }
         if (event.meteringEvent?.usage !== undefined) {
+          meteringUsage = event.meteringEvent.usage
           const usage = event.meteringEvent.usage
           const creditsText = `\n\n_Credits Used: ${usage.toFixed(2)}_`
           content += creditsText
@@ -149,6 +189,22 @@ export class ResponseHandler {
           arguments: typeof tc.input === 'string' ? tc.input : JSON.stringify(tc.input)
         }
       }))
+    }
+
+    // Log usage data after stream is consumed (only if apiTimestamp is provided)
+    if (apiTimestamp) {
+      logApiUsage(
+        {
+          inputTokens,
+          outputTokens,
+          totalTokens,
+          cacheReadInputTokens,
+          cacheWriteInputTokens,
+          contextUsagePercentage,
+          credits: meteringUsage ?? undefined
+        },
+        apiTimestamp
+      )
     }
 
     return new Response(JSON.stringify(oai), {
