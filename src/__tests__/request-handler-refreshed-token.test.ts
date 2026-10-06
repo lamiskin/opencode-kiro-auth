@@ -12,6 +12,7 @@ mock.module('../plugin/logger.js', () => ({
   logApiError: () => {},
   logApiRequest: () => {},
   logApiResponse: () => {},
+  logApiUsage: () => {},
   warn: () => {}
 }))
 

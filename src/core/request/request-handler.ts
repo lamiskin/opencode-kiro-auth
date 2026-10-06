@@ -184,7 +184,8 @@ export class RequestHandler {
           model,
           sdkPrep.conversationId,
           sdkPrep.streaming,
-          sdkPrep.toolNameMap
+          sdkPrep.toolNameMap,
+          apiTimestamp
         )
       } catch (e: any) {
         const httpStatus = e?.$metadata?.httpStatusCode
@@ -207,8 +208,9 @@ export class RequestHandler {
         }
 
         if (httpStatus) {
+          const cappedMessage = String(e?.message || '').slice(0, 500)
           const mockResponse = new Response(
-            JSON.stringify({ message: e.message, __type: e.name }),
+            JSON.stringify({ error: cappedMessage, status: httpStatus, statusText: e.name }),
             {
               status: httpStatus,
               statusText: e.name || 'Error',
@@ -238,8 +240,9 @@ export class RequestHandler {
             continue
           }
 
-          const errMsg = e?.message || `Kiro Error: ${httpStatus}`
-          if (/input is too long/i.test(errMsg)) {
+          const rawMsg = e?.message || `Kiro Error: ${httpStatus}`
+          const errMsg = `Kiro Error: ${httpStatus} - ${String(rawMsg).slice(0, 500)}`
+          if (/input is too long/i.test(rawMsg)) {
             return new Response(
               JSON.stringify({
                 error: {
@@ -254,7 +257,7 @@ export class RequestHandler {
               }
             )
           }
-          throw new Error(`Kiro Error: ${httpStatus}`)
+          throw new Error(errMsg)
         }
 
         const networkResult = await this.errorHandler.handleNetworkError(e, { retry }, notify)
@@ -307,17 +310,40 @@ export class RequestHandler {
       ? { output_config: { effort: prep.effort } }
       : undefined
 
+    const conversationState = prep.conversationState
+    const history = (conversationState as any).history || []
+    const currentMessage = conversationState.currentMessage
+    const userInputMessage = currentMessage?.userInputMessage
+    const userInputMessageContext = userInputMessage?.userInputMessageContext || {}
+
+    // ponytail: sizes for debugging input token composition
+    const sizes = {
+      history: JSON.stringify(history).length,
+      historyMessages: history.length,
+      currentContent: userInputMessage?.content?.length || 0,
+      tools: userInputMessageContext.tools
+        ? JSON.stringify(userInputMessageContext.tools).length
+        : 0,
+      toolResults: userInputMessageContext.toolResults
+        ? JSON.stringify(userInputMessageContext.toolResults).length
+        : 0,
+      images: userInputMessage?.images ? JSON.stringify(userInputMessage.images).length : 0,
+      // system: cannot be separated - injectSystemPrompt merges it into history[0].userInputMessage.content
+      total: JSON.stringify(conversationState).length
+    }
+
     logger.logApiRequest(
       {
         url: `https://q.${prep.region}.amazonaws.com/generateAssistantResponse`,
         method: 'POST',
         headers: { 'x-amzn-kiro-agent-mode': 'vibe' },
+        sizes,
         body: {
           conversationState: {
-            chatTriggerType: prep.conversationState.chatTriggerType,
-            conversationId: prep.conversationState.conversationId,
-            historyLength: (prep.conversationState as any).history?.length || 0,
-            currentMessage: prep.conversationState.currentMessage
+            chatTriggerType: conversationState.chatTriggerType,
+            conversationId: conversationState.conversationId,
+            historyLength: history.length,
+            currentMessage: currentMessage
           },
           profileArn: prep.profileArn,
           ...(additionalModelRequestFields ? { additionalModelRequestFields } : {})
