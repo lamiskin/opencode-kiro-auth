@@ -18,6 +18,7 @@ mock.module('../plugin/logger.js', () => ({
   logApiResponse: () => {
     apiResponseLogCalls++
   },
+  logApiUsage: () => {},
   warn: () => {}
 }))
 
@@ -129,7 +130,9 @@ describe('RequestHandler SDK error recovery', () => {
     sdkHttpStatus = 403
     const { handler, getForceRefreshCalls } = createHarness()
 
-    await expect(request(handler)).rejects.toThrow('Kiro Error: 403')
+    await expect(request(handler)).rejects.toThrow(
+      'The bearer token included in the request is invalid'
+    )
 
     expect(sendCalls).toBe(2)
     expect(getForceRefreshCalls()).toBe(1)

@@ -33,10 +33,18 @@ export class ErrorHandler {
     switchAccount?: boolean
     forceRefresh?: boolean
   }> {
+    // Read and cache response body once (body stream can only be consumed once)
+    let cachedBody = ''
+    try {
+      cachedBody = await response.text()
+    } catch {}
+
     const readBody = async (): Promise<string> => {
       try {
-        const body = JSON.parse(await response.clone().text())
-        return body.message || body.Message || body.__type || JSON.stringify(body)
+        const body = JSON.parse(cachedBody)
+        // Try to extract error field first (contains full error message from Kiro)
+        // then fall back to standard message fields
+        return body.error || body.message || body.Message || body.__type || JSON.stringify(body)
       } catch {
         return ''
       }
@@ -44,7 +52,13 @@ export class ErrorHandler {
 
     if (response.status === 400) {
       const reason = await readBody()
-      showToast(`400: ${reason || 'unknown'}`, 'error')
+      // Clean up redundant "Kiro Error: 400 - " prefix from the message
+      const cleanedError = reason.replace(/^Kiro Error: 400 - /, '').trim()
+      let statusText = ''
+      try {
+        statusText = JSON.parse(cachedBody).statusText || ''
+      } catch {}
+      showToast(`${statusText || '400'}: ${cleanedError || 'Bad Request'}`, 'error')
       return { shouldRetry: false }
     }
 
@@ -61,8 +75,7 @@ export class ErrorHandler {
       account.failCount = (account.failCount || 0) + 1
       let errorMessage = 'Internal Server Error'
       try {
-        const errorBody = await response.text()
-        const errorData = JSON.parse(errorBody)
+        const errorData = JSON.parse(cachedBody)
         if (errorData.message) {
           errorMessage = errorData.message
         } else if (errorData.Message) {
@@ -102,16 +115,15 @@ export class ErrorHandler {
     if (response.status === 402 || response.status === 403) {
       let errorReason = response.status === 402 ? 'Quota' : 'Forbidden'
       let isPermanent = false
-      const errorBody = await response.text()
       const errorData = (() => {
         try {
-          return JSON.parse(errorBody)
+          return JSON.parse(cachedBody)
         } catch {
           return null
         }
       })()
-      if (errorData?.message) {
-        errorReason = errorData.message
+      if (errorData?.error || errorData?.message) {
+        errorReason = errorData.error || errorData.message
       }
       if (errorData?.reason === 'INVALID_MODEL_ID') {
         throw new Error(`Invalid model: ${errorData.message}`)
