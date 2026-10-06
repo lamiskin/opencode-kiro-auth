@@ -65,6 +65,8 @@ export const MODEL_MAPPING: Record<string, string> = {
   'claude-sonnet-4-6-1m-thinking': 'claude-sonnet-4.6-1m',
   'claude-sonnet-5': 'claude-sonnet-5',
   'claude-sonnet-5-thinking': 'claude-sonnet-5',
+  'claude-sonnet-5-5': 'claude-sonnet-5.5',
+  'claude-sonnet-5-5-thinking': 'claude-sonnet-5.5',
   'claude-sonnet-5-1m': 'claude-sonnet-5-1m',
   'claude-sonnet-5-1m-thinking': 'claude-sonnet-5-1m',
   // Claude Opus
@@ -80,6 +82,11 @@ export const MODEL_MAPPING: Record<string, string> = {
   'claude-opus-4-8-thinking': 'claude-opus-4.8',
   'claude-opus-5': 'claude-opus-5',
   'claude-opus-5-thinking': 'claude-opus-5',
+  'claude-opus-5-5': 'claude-opus-5.5',
+  'claude-opus-5-5-thinking': 'claude-opus-5.5',
+  // Claude Fable
+  'claude-fable-5-1': 'claude-fable-5.1',
+  'claude-fable-5-1-thinking': 'claude-fable-5.1',
   // Auto
   auto: 'auto',
   // Open weight models

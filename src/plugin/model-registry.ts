@@ -14,6 +14,8 @@ const MULTIMODAL: Modalities = { input: ['text', 'image', 'pdf'], output: ['text
 const CONTEXT_200K = { context: 200000, output: 64000 }
 const CONTEXT_1M = { context: 1000000, output: 64000 }
 const CONTEXT_272K = { context: 272000, output: 128000 }
+const CONTEXT_128K = { context: 128000, output: 64000 }
+const CONTEXT_256K = { context: 256000, output: 64000 }
 
 /**
  * Static model capabilities that don't change dynamically.
@@ -49,7 +51,8 @@ const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
   'claude-sonnet-4': {
     name: 'Claude Sonnet 4.0',
     limit: CONTEXT_200K,
-    modalities: MULTIMODAL
+    modalities: MULTIMODAL,
+    thinking: true
   },
   'claude-sonnet-4-5': {
     name: 'Claude Sonnet 4.5',
@@ -65,6 +68,12 @@ const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
   },
   'claude-sonnet-5': {
     name: 'Claude Sonnet 5',
+    limit: CONTEXT_1M,
+    modalities: MULTIMODAL,
+    thinking: true
+  },
+  'claude-sonnet-5-5': {
+    name: 'Claude Sonnet 5.5',
     limit: CONTEXT_1M,
     modalities: MULTIMODAL,
     thinking: true
@@ -108,15 +117,32 @@ const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     modalities: MULTIMODAL,
     thinking: true
   },
+  'claude-opus-5-5': {
+    name: 'Claude Opus 5.5',
+    limit: CONTEXT_1M,
+    modalities: MULTIMODAL,
+    thinking: true
+  },
+  'claude-fable-5-1': {
+    name: 'Claude Fable 5.1',
+    limit: CONTEXT_1M,
+    modalities: MULTIMODAL,
+    thinking: true
+  },
 
   // Open weight models
   'deepseek-3.2': {
     name: 'DeepSeek 3.2',
-    limit: { context: 128000, output: 64000 },
+    limit: CONTEXT_128K,
     modalities: TEXT_ONLY,
     thinking: true
   },
-  'glm-5': { name: 'GLM-5', limit: CONTEXT_200K, modalities: TEXT_ONLY },
+  'glm-5': {
+    name: 'GLM-5',
+    limit: CONTEXT_200K,
+    modalities: TEXT_ONLY,
+    thinking: true
+  },
   'minimax-m2.5': {
     name: 'MiniMax M2.5',
     limit: { context: 196000, output: 64000 },
@@ -131,7 +157,7 @@ const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
   },
   'qwen3-coder-next': {
     name: 'Qwen3 Coder Next',
-    limit: { context: 256000, output: 64000 },
+    limit: CONTEXT_256K,
     modalities: TEXT_ONLY
   },
 

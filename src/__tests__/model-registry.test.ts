@@ -1,8 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { SUPPORTED_MODELS } from '../constants.js'
 import type { Effort } from '../plugin/config/schema.js'
-import { budgetToEffort, THINKING_BUDGETS } from '../plugin/effort.js'
-import { isOpenAIModel } from '../plugin/effort.js'
+import { budgetToEffort, isOpenAIModel, THINKING_BUDGETS } from '../plugin/effort.js'
 import { buildModelRegistry } from '../plugin/model-registry.js'
 import { resolveKiroModel } from '../plugin/models.js'
 
@@ -13,7 +12,10 @@ const XHIGH_MODELS = [
   'claude-opus-4-7-thinking',
   'claude-opus-4-8-thinking',
   'claude-opus-5-thinking',
+  'claude-opus-5-5-thinking',
   'claude-sonnet-5-thinking',
+  'claude-sonnet-5-5-thinking',
+  'claude-fable-5-1-thinking',
   'gpt-5.6-sol-thinking',
   'gpt-5.6-terra-thinking',
   'gpt-5.6-luna-thinking',
@@ -44,7 +46,17 @@ describe('model registry', () => {
     // Claude models get -thinking companion entries
     // GPT-5.6 models have reasoning=true on base entry with no -thinking variants
     const expectedThinking = [
-      ...CLAUDE_THINKING_IDS,
+      'claude-opus-4-5-thinking',
+      'claude-opus-4-6-thinking',
+      'claude-opus-4-7-thinking',
+      'claude-opus-4-8-thinking',
+      'claude-opus-5-thinking',
+      'claude-opus-5-5-thinking',
+      'claude-sonnet-4-5-thinking',
+      'claude-sonnet-4-6-thinking',
+      'claude-sonnet-5-thinking',
+      'claude-sonnet-5-5-thinking',
+      'claude-fable-5-1-thinking',
       'deepseek-3.2-thinking',
       'minimax-m2.5-thinking',
       'minimax-m2.1-thinking'
