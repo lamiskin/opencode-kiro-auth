@@ -126,6 +126,216 @@
         }
         .pace-status.ok { color: var(--oc-success-text, #2ecc71); }
         .pace-status.over { color: var(--oc-error-text, #e74c3c); }
+        
+        /* Request drill-down styles */
+        .tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 16px;
+            background: var(--oc-elevated, #2a2a2a);
+            border-radius: var(--oc-radius, 6px);
+            padding: 4px;
+        }
+        .tab {
+            padding: 6px 12px;
+            border: none;
+            background: transparent;
+            color: var(--oc-muted, #888);
+            border-radius: var(--oc-radius, 4px);
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s ease;
+        }
+        .tab:hover {
+            color: var(--oc-fg, #e0e0e0);
+        }
+        .tab.active {
+            background: var(--oc-primary-text, #e0e0e0);
+            color: var(--oc-bg, #1a1a1a);
+            font-weight: 500;
+        }
+        
+        .filters {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+            margin-bottom: 16px;
+            background: var(--oc-elevated, #2a2a2a);
+            border-radius: var(--oc-radius, 6px);
+            padding: 12px;
+            border: 1px solid var(--oc-border, #333);
+        }
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .filter-label {
+            font-size: 12px;
+            color: var(--oc-muted, #888);
+        }
+        .filter-input, .filter-select {
+            background: var(--oc-bg, #1a1a1a);
+            border: 1px solid var(--oc-border, #555);
+            color: var(--oc-fg, #e0e0e0);
+            padding: 6px 10px;
+            border-radius: var(--oc-radius, 4px);
+            font-size: 13px;
+        }
+        .filter-input:focus, .filter-select:focus {
+            outline: none;
+            border-color: var(--oc-primary-text, #e0e0e0);
+        }
+        
+        .results-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            font-size: 13px;
+            color: var(--oc-muted, #888);
+        }
+        
+        .request-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .request-row {
+            background: var(--oc-elevated, #2a2a2a);
+            border-radius: var(--oc-radius, 6px);
+            padding: 10px 12px;
+            border: 1px solid var(--oc-border, #333);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .request-row:hover {
+            border-color: var(--oc-primary-text, #e0e0e0);
+        }
+        
+        .request-row.collapsed {
+            display: block;
+        }
+        
+        .request-row.expanded {
+            display: block;
+        }
+        
+        .request-header {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+            font-size: 13px;
+        }
+        
+        .request-time {
+            color: var(--oc-muted, #888);
+            font-family: monospace;
+            font-size: 12px;
+        }
+        
+        .request-email {
+            font-weight: 500;
+            color: var(--oc-primary-text, #e0e0e0);
+            flex: 1;
+            min-width: 100px;
+        }
+        
+        .request-model {
+            color: var(--oc-info-text, #b0b0b0);
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        
+        .request-status {
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            min-width: 50px;
+            text-align: center;
+        }
+        .request-status.ok { background: rgba(46, 204, 113, 0.15); color: var(--oc-success-text, #2ecc71); }
+        .request-status.error { background: rgba(231, 76, 60, 0.15); color: var(--oc-error-text, #e74c3c); }
+        
+        .request-conversation {
+            color: var(--oc-muted, #777);
+            font-family: monospace;
+            font-size: 11px;
+            margin-left: auto;
+        }
+        
+        .request-details {
+            margin-top: 10px;
+            padding: 10px;
+            background: var(--oc-bg, #1a1a1a);
+            border-radius: var(--oc-radius, 4px);
+            border: 1px solid var(--oc-border, #444);
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+        .request-details pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        
+        .pagination {
+            display: flex;
+            gap: 8px;
+            margin-top: 16px;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .pagination-btn {
+            padding: 6px 12px;
+            background: var(--oc-elevated, #3a3a3a);
+            border: 1px solid var(--oc-border, #555);
+            color: var(--oc-fg, #e0e0e0);
+            border-radius: var(--oc-radius, 4px);
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s ease;
+        }
+        .pagination-btn:hover:not(:disabled) {
+            background: var(--oc-hover, #444);
+        }
+        .pagination-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--oc-muted, #888);
+        }
+        .empty-state h3 {
+            margin: 0 0 8px 0;
+            color: var(--oc-primary-text, #e0e0e0);
+            font-size: 16px;
+        }
+        .empty-state p {
+            margin: 0;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        .empty-state code {
+            background: var(--oc-elevated, #2a2a2a);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+            color: var(--oc-warning-text, #f39c12);
+        }
     </style>
 </head>
 <body>
@@ -133,6 +343,12 @@
         <h1>Kiro Usage</h1>
         <button class="refresh-btn" id="refresh">Refresh</button>
     </div>
+    
+    <div class="tabs">
+        <button class="tab active" data-view="usage">Usage</button>
+        <button class="tab" data-view="requests">Requests</button>
+    </div>
+    
     <div id="content"></div>
     <script src="main.js"></script>
 </body>
