@@ -328,7 +328,8 @@ export class RequestHandler {
         ? JSON.stringify(userInputMessageContext.toolResults).length
         : 0,
       images: userInputMessage?.images ? JSON.stringify(userInputMessage.images).length : 0,
-      // system: cannot be separated - injectSystemPrompt merges it into history[0].userInputMessage.content
+      // system is a subset of history (merged into history[0] by injectSystemPrompt)
+      system: prep.systemChars ?? 0,
       total: JSON.stringify(conversationState).length
     }
 
