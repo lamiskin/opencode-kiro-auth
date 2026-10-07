@@ -35,6 +35,8 @@ let activeCatalog = new Map<string, ModelCatalogEntry>()
  * Bundled fallback data extracted from kiro.dev/docs/models.md
  * Last updated: September 2026
  * This serves as a fallback when the remote fetch fails.
+ *
+ * Includes both hyphenated and dot-notation variants to handle all model ID formats.
  */
 const BUNDLED_MODEL_CATALOG: ModelCatalogEntry[] = [
   // GPT-5.6 uses two-tier pricing: short-context (≤272K) and long-context (>272K)
@@ -42,25 +44,135 @@ const BUNDLED_MODEL_CATALOG: ModelCatalogEntry[] = [
   { id: 'gpt-5.6-sol', name: 'GPT-5.6 Sol', rate: '4.4x', context: 1000000 },
   { id: 'gpt-5.6-terra', name: 'GPT-5.6 Terra', rate: '2.2x', context: 1000000 },
   { id: 'gpt-5.6-luna', name: 'GPT-5.6 Luna', rate: '1.1x', context: 1000000 },
+
+  // Claude Opus (dot notation from resolveKiroModel)
   { id: 'claude-opus-5', name: 'Claude Opus 5', rate: '2.2x', context: 1000000 },
-  { id: 'claude-opus-5-5', name: 'Claude Opus 5.5', rate: '2.2x', context: 1000000 },
+  { id: 'claude-opus-5.5', name: 'Claude Opus 5.5', rate: '2.0x', context: 1000000 },
   { id: 'claude-opus-4-8', name: 'Claude Opus 4.8', rate: '2.2x', context: 1000000 },
+  { id: 'claude-opus-4.8', name: 'Claude Opus 4.8', rate: '2.2x', context: 1000000 },
   { id: 'claude-opus-4-7', name: 'Claude Opus 4.7', rate: '2.2x', context: 1000000 },
+  { id: 'claude-opus-4.7', name: 'Claude Opus 4.7', rate: '2.2x', context: 1000000 },
   { id: 'claude-opus-4-6', name: 'Claude Opus 4.6', rate: '2.2x', context: 1000000 },
+  { id: 'claude-opus-4.6', name: 'Claude Opus 4.6', rate: '2.2x', context: 1000000 },
+  { id: 'claude-opus-4.6-1m', name: 'Claude Opus 4.6 1M', rate: '2.2x', context: 1000000 },
   { id: 'claude-opus-4-5', name: 'Claude Opus 4.5', rate: '2.2x', context: 200000 },
+  { id: 'claude-opus-4.5', name: 'Claude Opus 4.5', rate: '2.2x', context: 200000 },
+
+  // Claude Sonnet
   { id: 'claude-sonnet-5', name: 'Claude Sonnet 5', rate: '1.3x', context: 1000000 },
-  { id: 'claude-sonnet-5-5', name: 'Claude Sonnet 5.5', rate: '1.3x', context: 1000000 },
-  { id: 'claude-fable-5-1', name: 'Claude Fable 5.1', rate: '0.5x', context: 1000000 },
+  { id: 'claude-sonnet-5.5', name: 'Claude Sonnet 5.5', rate: '1.3x', context: 1000000 },
+  { id: 'claude-sonnet-5-1m', name: 'Claude Sonnet 5 1M', rate: '1.3x', context: 1000000 },
   { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', rate: '1.3x', context: 1000000 },
+  { id: 'claude-sonnet-4.6', name: 'Claude Sonnet 4.6', rate: '1.3x', context: 1000000 },
+  { id: 'claude-sonnet-4.6-1m', name: 'Claude Sonnet 4.6 1M', rate: '1.3x', context: 1000000 },
   { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5', rate: '1.3x', context: 200000 },
+  { id: 'claude-sonnet-4.5', name: 'Claude Sonnet 4.5', rate: '1.3x', context: 200000 },
+  { id: 'claude-sonnet-4.5-1m', name: 'Claude Sonnet 4.5 1M', rate: '1.3x', context: 1000000 },
   { id: 'claude-sonnet-4', name: 'Claude Sonnet 4.0', rate: '1.3x', context: 200000 },
+
+  // Claude Fable
+  { id: 'claude-fable-5-1', name: 'Claude Fable 5.1', rate: '6x', context: 1000000 },
+  { id: 'claude-fable-5.1', name: 'Claude Fable 5.1', rate: '6x', context: 1000000 },
+
+  // Claude Haiku
   { id: 'auto', name: 'Auto', rate: '1.0x', context: 200000 },
   { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', rate: '0.4x', context: 200000 },
+  { id: 'claude-haiku-4.5', name: 'Claude Haiku 4.5', rate: '0.4x', context: 200000 },
+
+  // Open-weight models
   { id: 'deepseek-3.2', name: 'DeepSeek 3.2', rate: '0.25x', context: 128000 },
   { id: 'minimax-m2.5', name: 'MiniMax M2.5', rate: '0.25x', context: 200000 },
   { id: 'glm-5', name: 'GLM-5', rate: '0.5x', context: 200000 },
   { id: 'minimax-m2.1', name: 'MiniMax M2.1', rate: '0.15x', context: 200000 },
-  { id: 'qwen3-coder-next', name: 'Qwen3 Coder Next', rate: '0.05x', context: 256000 }
+  { id: 'qwen3-coder-next', name: 'Qwen3 Coder Next', rate: '0.05x', context: 256000 },
+
+  // Thinking variants resolve to their base models in the catalog,
+  // but we include them here for direct lookups by thinking variant ID
+  {
+    id: 'claude-haiku-4-5-thinking',
+    name: 'Claude Haiku 4.5 Thinking',
+    rate: '0.4x',
+    context: 200000
+  },
+  {
+    id: 'claude-sonnet-4-thinking',
+    name: 'Claude Sonnet 4.0 Thinking',
+    rate: '1.3x',
+    context: 200000
+  },
+  {
+    id: 'claude-sonnet-4-5-thinking',
+    name: 'Claude Sonnet 4.5 Thinking',
+    rate: '1.3x',
+    context: 200000
+  },
+  {
+    id: 'claude-sonnet-4-6-thinking',
+    name: 'Claude Sonnet 4.6 Thinking',
+    rate: '1.3x',
+    context: 1000000
+  },
+  {
+    id: 'claude-sonnet-5-thinking',
+    name: 'Claude Sonnet 5 Thinking',
+    rate: '1.3x',
+    context: 1000000
+  },
+  {
+    id: 'claude-sonnet-5-5-thinking',
+    name: 'Claude Sonnet 5.5 Thinking',
+    rate: '1.3x',
+    context: 1000000
+  },
+  {
+    id: 'claude-opus-4-5-thinking',
+    name: 'Claude Opus 4.5 Thinking',
+    rate: '2.2x',
+    context: 200000
+  },
+  {
+    id: 'claude-opus-4-6-thinking',
+    name: 'Claude Opus 4.6 Thinking',
+    rate: '2.2x',
+    context: 1000000
+  },
+  {
+    id: 'claude-opus-4-7-thinking',
+    name: 'Claude Opus 4.7 Thinking',
+    rate: '2.2x',
+    context: 1000000
+  },
+  {
+    id: 'claude-opus-4-8-thinking',
+    name: 'Claude Opus 4.8 Thinking',
+    rate: '2.2x',
+    context: 1000000
+  },
+  { id: 'claude-opus-5-thinking', name: 'Claude Opus 5 Thinking', rate: '2.2x', context: 1000000 },
+  {
+    id: 'claude-opus-5-5-thinking',
+    name: 'Claude Opus 5.5 Thinking',
+    rate: '2.0x',
+    context: 1000000
+  },
+  {
+    id: 'claude-fable-5-1-thinking',
+    name: 'Claude Fable 5.1 Thinking',
+    rate: '6x',
+    context: 1000000
+  },
+  { id: 'deepseek-3.2-thinking', name: 'DeepSeek 3.2 Thinking', rate: '0.25x', context: 128000 },
+  { id: 'minimax-m2.5-thinking', name: 'MiniMax M2.5 Thinking', rate: '0.25x', context: 200000 },
+  { id: 'minimax-m2.1-thinking', name: 'MiniMax M2.1 Thinking', rate: '0.15x', context: 200000 },
+  {
+    id: 'qwen3-coder-next-thinking',
+    name: 'Qwen3 Coder Next Thinking',
+    rate: '0.05x',
+    context: 256000
+  },
+  { id: 'gpt-5.6-sol-thinking', name: 'GPT-5.6 Sol Thinking', rate: '4.4x', context: 1000000 },
+  { id: 'gpt-5.6-terra-thinking', name: 'GPT-5.6 Terra Thinking', rate: '2.2x', context: 1000000 },
+  { id: 'gpt-5.6-luna-thinking', name: 'GPT-5.6 Luna Thinking', rate: '1.1x', context: 1000000 }
 ]
 
 /**
@@ -206,8 +318,20 @@ export function getModelCatalogEntry(modelId: string): ModelCatalogEntry | undef
     // Model not in mapping
   }
 
-  // Fall back to bundled data
-  return BUNDLED_MODEL_CATALOG.find((entry) => entry.id === modelId)
+  // Fall back to bundled data (try direct lookup first)
+  let bundledEntry = BUNDLED_MODEL_CATALOG.find((entry) => entry.id === modelId)
+  if (bundledEntry) return bundledEntry
+
+  // Try bundled data with resolved ID
+  try {
+    const resolvedId = resolveKiroModel(modelId)
+    bundledEntry = BUNDLED_MODEL_CATALOG.find((entry) => entry.id === resolvedId)
+    if (bundledEntry) return bundledEntry
+  } catch {
+    // Model not in mapping
+  }
+
+  return undefined
 }
 
 /**

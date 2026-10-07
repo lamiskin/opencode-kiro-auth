@@ -126,6 +126,8 @@ export interface SdkPreparedRequest {
   toolNameMap?: ToolNameMap
   /** Resolved effort level for thinking models */
   effort?: Effort
+  /** Char length of the merged system prompt (sent inside history[0]); for size logging only */
+  systemChars?: number
 }
 
 export type AccountSelectionStrategy = z.infer<typeof AccountSelectionStrategySchema>

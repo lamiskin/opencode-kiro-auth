@@ -38,6 +38,7 @@ interface TransformResult {
   resolved: string
   convId: string
   toolNameMap: ToolNameMap
+  systemChars: number
 }
 
 interface EffortConfig {
@@ -292,7 +293,13 @@ function buildCodeWhispererRequest(
     }
   }
 
-  return { request, resolved, convId, toolNameMap: toolNameRegistry.toOriginalMap() }
+  return {
+    request,
+    resolved,
+    convId,
+    toolNameMap: toolNameRegistry.toOriginalMap(),
+    systemChars: sys.length
+  }
 }
 
 export function transformToCodeWhisperer(
@@ -349,7 +356,7 @@ export function transformToSdkRequest(
   showToast?: ToastFunction,
   effortConfig?: EffortConfig
 ): SdkPreparedRequest {
-  const { request, resolved, convId, toolNameMap } = buildCodeWhispererRequest(
+  const { request, resolved, convId, toolNameMap, systemChars } = buildCodeWhispererRequest(
     body,
     model,
     auth,
@@ -375,6 +382,7 @@ export function transformToSdkRequest(
     conversationId: convId,
     region: extractRegionFromArn(auth.profileArn) ?? auth.region,
     toolNameMap,
-    effort
+    effort,
+    systemChars
   }
 }
