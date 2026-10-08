@@ -98,15 +98,22 @@ export const MODEL_MAPPING: Record<string, string> = {
   // GPT-5.6 (OpenAI)
   'gpt-5.6-sol': 'gpt-5.6-sol',
   'gpt-5.6-sol-thinking': 'gpt-5.6-sol',
+  'gpt-5.6-sol-272k': 'gpt-5.6-sol',
   'gpt-5.6-terra': 'gpt-5.6-terra',
   'gpt-5.6-terra-thinking': 'gpt-5.6-terra',
+  'gpt-5.6-terra-272k': 'gpt-5.6-terra',
   'gpt-5.6-luna': 'gpt-5.6-luna',
   'gpt-5.6-luna-thinking': 'gpt-5.6-luna',
+  'gpt-5.6-luna-272k': 'gpt-5.6-luna',
   // Open-weight thinking models
   'deepseek-3.2-thinking': 'deepseek-3.2',
+  'deepseek-3.2-thinking-272k': 'deepseek-3.2',
   'minimax-m2.5-thinking': 'minimax-m2.5',
+  'minimax-m2.5-thinking-272k': 'minimax-m2.5',
   'minimax-m2.1-thinking': 'minimax-m2.1',
+  'minimax-m2.1-thinking-272k': 'minimax-m2.1',
   'qwen3-coder-next-thinking': 'qwen3-coder-next',
+  'qwen3-coder-next-thinking-272k': 'qwen3-coder-next',
   // Legacy / internal mappings kept for backwards compatibility
   'claude-3-7-sonnet': 'CLAUDE_3_7_SONNET_20250219_V1_0',
   'nova-swe': 'AGI_NOVA_SWE_V1_5',
@@ -118,6 +125,13 @@ export const MODEL_MAPPING: Record<string, string> = {
 export const SUPPORTED_MODELS = Object.keys(MODEL_MAPPING)
 
 const LONG_CONTEXT_MODELS = new Set(Object.keys(MODEL_MAPPING).filter((k) => k.includes('-1m')))
+
+/** Models with 272K context (two-tier pricing tier boundary) */
+const CAPPED_272K_MODELS = new Set(Object.keys(MODEL_MAPPING).filter((k) => k.includes('-272k')))
+
+export function is272KModel(model: string): boolean {
+  return CAPPED_272K_MODELS.has(model)
+}
 
 export function isLongContextModel(model: string): boolean {
   return LONG_CONTEXT_MODELS.has(model)

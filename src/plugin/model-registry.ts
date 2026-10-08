@@ -39,6 +39,11 @@ interface ModelCapabilities {
    * The base model advertises `reasoning: true` with effort variants.
    */
   reasoning?: boolean
+  /**
+   * Emit a companion `-272k` entry for models with two-tier pricing.
+   * The -272k variant caps context at 272K to stay in the base pricing tier.
+   */
+  capped272k?: boolean
 }
 
 /**
@@ -159,23 +164,27 @@ const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
   },
 
   // GPT-5.6 (OpenAI) - 1M context window as of Sep 2026
+  // These models have two-tier pricing: ≤272K at base rate, >272K at 2x rate
   'gpt-5.6-sol': {
     name: 'GPT-5.6 Sol',
     limit: CONTEXT_1M,
     modalities: MULTIMODAL,
-    reasoning: true
+    reasoning: true,
+    capped272k: true
   },
   'gpt-5.6-terra': {
     name: 'GPT-5.6 Terra',
     limit: CONTEXT_1M,
     modalities: MULTIMODAL,
-    reasoning: true
+    reasoning: true,
+    capped272k: true
   },
   'gpt-5.6-luna': {
     name: 'GPT-5.6 Luna',
     limit: CONTEXT_1M,
     modalities: MULTIMODAL,
-    reasoning: true
+    reasoning: true,
+    capped272k: true
   }
 }
 
@@ -212,6 +221,9 @@ function buildVariants(kiroModel: string, isOpenAI = false): Record<string, unkn
  * plugin emits (see streaming/openai-converter.ts). Without them OpenCode
  * silently drops every reasoning chunk and no thinking block is rendered.
  *
+ * `-272k` entries are companion variants for two-tier pricing models, capped at 272K
+ * context to stay in the base pricing tier (avoiding 2x multiplier for longer contexts).
+ *
  * Credit multipliers are fetched dynamically from the model catalog.
  */
 export function buildModelRegistry(): Record<string, unknown> {
@@ -237,6 +249,18 @@ export function buildModelRegistry(): Record<string, unknown> {
         reasoning: true,
         interleaved: { field: 'reasoning_content' },
         variants
+      }
+
+      // Emit -272k companion for two-tier pricing models
+      if (caps.capped272k) {
+        models[`${modelID}-272k`] = {
+          name: `${caps.name} 272K (${rate})`,
+          limit: CONTEXT_272K,
+          modalities: caps.modalities,
+          reasoning: true,
+          interleaved: { field: 'reasoning_content' },
+          variants
+        }
       }
       continue
     }

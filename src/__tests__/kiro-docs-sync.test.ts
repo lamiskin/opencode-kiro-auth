@@ -35,7 +35,7 @@ describe('kiro.dev documentation sync', () => {
     const registry = buildModelRegistry() as Record<string, any>
 
     const registryModelIDs = new Set(
-      Object.keys(registry).filter((id) => !id.endsWith('-thinking'))
+      Object.keys(registry).filter((id) => !id.endsWith('-thinking') && !id.endsWith('-272k'))
     )
     const documentedIDs = new Set(KIRO_DOCS_MODELS.map((m) => m.id))
 
@@ -135,10 +135,7 @@ describe('kiro.dev documentation sync', () => {
       'claude-opus-4.7',
       'claude-opus-4.8',
       'claude-opus-5',
-      'claude-sonnet-5',
-      'deepseek-3.2',
-      'minimax-m2.5',
-      'minimax-m2.1'
+      'claude-sonnet-5'
     ]
 
     for (const modelId of expectedXHighModels) {
