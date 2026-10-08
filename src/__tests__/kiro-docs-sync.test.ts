@@ -8,7 +8,7 @@ const KIRO_DOCS_MODELS = [
   // Long-context (>272K) is billed at 2x these rates.
   { id: 'gpt-5.6-sol', context: 1000000, rate: '4.4x', hasThinking: true, isOpenAI: true },
   { id: 'gpt-5.6-terra', context: 1000000, rate: '2.2x', hasThinking: true, isOpenAI: true },
-  { id: 'gpt-5.6-luna', context: 1000000, rate: '1.1x', hasThinking: true, isOpenAI: true },
+  { id: 'gpt-5.6-luna', context: 1000000, rate: '0.6x', hasThinking: true, isOpenAI: true },
   { id: 'claude-opus-5', context: 1000000, rate: '2.2x', hasThinking: true, isOpenAI: false },
   { id: 'claude-opus-5-5', context: 1000000, rate: '2.0x', hasThinking: true, isOpenAI: false },
   { id: 'claude-opus-4-8', context: 1000000, rate: '2.2x', hasThinking: true, isOpenAI: false },

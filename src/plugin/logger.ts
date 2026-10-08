@@ -154,7 +154,7 @@ export function logApiUsage(usage: ApiUsage, timestamp: string): void {
         'claude-haiku-4-5': '0.4x',
         'gpt-5.6-sol': '4.4x',
         'gpt-5.6-terra': '2.2x',
-        'gpt-5.6-luna': '1.1x',
+        'gpt-5.6-luna': '0.6x',
         'deepseek-3.2': '0.25x',
         'minimax-m2.5': '0.25x',
         'glm-5': '0.5x',
