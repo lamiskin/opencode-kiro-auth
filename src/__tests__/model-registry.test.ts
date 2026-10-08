@@ -56,10 +56,7 @@ describe('model registry', () => {
       'claude-sonnet-4-6-thinking',
       'claude-sonnet-5-thinking',
       'claude-sonnet-5-5-thinking',
-      'claude-fable-5-1-thinking',
-      'deepseek-3.2-thinking',
-      'minimax-m2.5-thinking',
-      'minimax-m2.1-thinking'
+      'claude-fable-5-1-thinking'
     ]
     expect(thinkingIDs.sort()).toEqual(expectedThinking.sort())
   })

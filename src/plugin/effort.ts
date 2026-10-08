@@ -42,10 +42,7 @@ const XHIGH_CAPABLE_MODELS = new Set([
   'claude-fable-5.1',
   'gpt-5.6-sol',
   'gpt-5.6-terra',
-  'gpt-5.6-luna',
-  'deepseek-3.2',
-  'minimax-m2.5',
-  'minimax-m2.1'
+  'gpt-5.6-luna'
 ])
 
 /**

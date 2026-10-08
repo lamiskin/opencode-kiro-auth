@@ -161,9 +161,7 @@ const BUNDLED_MODEL_CATALOG: ModelCatalogEntry[] = [
     rate: '6x',
     context: 1000000
   },
-  { id: 'deepseek-3.2-thinking', name: 'DeepSeek 3.2 Thinking', rate: '0.25x', context: 128000 },
-  { id: 'minimax-m2.5-thinking', name: 'MiniMax M2.5 Thinking', rate: '0.25x', context: 200000 },
-  { id: 'minimax-m2.1-thinking', name: 'MiniMax M2.1 Thinking', rate: '0.15x', context: 200000 },
+
   {
     id: 'qwen3-coder-next-thinking',
     name: 'Qwen3 Coder Next Thinking',

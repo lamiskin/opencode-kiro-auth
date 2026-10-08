@@ -134,8 +134,7 @@ const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
   'deepseek-3.2': {
     name: 'DeepSeek 3.2',
     limit: CONTEXT_128K,
-    modalities: TEXT_ONLY,
-    thinking: true
+    modalities: TEXT_ONLY
   },
   'glm-5': {
     name: 'GLM-5',
@@ -146,14 +145,12 @@ const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
   'minimax-m2.5': {
     name: 'MiniMax M2.5',
     limit: { context: 196000, output: 64000 },
-    modalities: TEXT_ONLY,
-    thinking: true
+    modalities: TEXT_ONLY
   },
   'minimax-m2.1': {
     name: 'MiniMax M2.1',
     limit: { context: 196000, output: 64000 },
-    modalities: TEXT_ONLY,
-    thinking: true
+    modalities: TEXT_ONLY
   },
   'qwen3-coder-next': {
     name: 'Qwen3 Coder Next',
