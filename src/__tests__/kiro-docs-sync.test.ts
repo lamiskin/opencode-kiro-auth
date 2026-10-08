@@ -22,10 +22,10 @@ const KIRO_DOCS_MODELS = [
   { id: 'claude-sonnet-4', context: 200000, rate: '1.3x', hasThinking: false, isOpenAI: false },
   { id: 'claude-fable-5-1', context: 1000000, rate: '6x', hasThinking: true, isOpenAI: false },
   { id: 'claude-haiku-4-5', context: 200000, rate: '0.4x', hasThinking: false, isOpenAI: false },
-  { id: 'deepseek-3.2', context: 128000, rate: '0.25x', hasThinking: true, isOpenAI: false },
-  { id: 'minimax-m2.5', context: 196000, rate: '0.25x', hasThinking: true, isOpenAI: false },
+  { id: 'deepseek-3.2', context: 128000, rate: '0.25x', hasThinking: false, isOpenAI: false },
+  { id: 'minimax-m2.5', context: 196000, rate: '0.25x', hasThinking: false, isOpenAI: false },
   { id: 'glm-5', context: 200000, rate: '0.5x', hasThinking: false, isOpenAI: false },
-  { id: 'minimax-m2.1', context: 196000, rate: '0.15x', hasThinking: true, isOpenAI: false },
+  { id: 'minimax-m2.1', context: 196000, rate: '0.15x', hasThinking: false, isOpenAI: false },
   { id: 'qwen3-coder-next', context: 256000, rate: '0.05x', hasThinking: false, isOpenAI: false },
   { id: 'auto', context: null, rate: '1.0x', hasThinking: false, isOpenAI: false }
 ] as const
