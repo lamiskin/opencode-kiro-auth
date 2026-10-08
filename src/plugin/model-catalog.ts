@@ -42,8 +42,11 @@ const BUNDLED_MODEL_CATALOG: ModelCatalogEntry[] = [
   // GPT-5.6 uses two-tier pricing: short-context (≤272K) and long-context (>272K)
   // The rates shown are for short-context. Long-context is 2x these rates.
   { id: 'gpt-5.6-sol', name: 'GPT-5.6 Sol', rate: '4.4x', context: 1000000 },
+  { id: 'gpt-5.6-sol-272k', name: 'GPT-5.6 Sol 272K', rate: '4.4x', context: 272000 },
   { id: 'gpt-5.6-terra', name: 'GPT-5.6 Terra', rate: '2.2x', context: 1000000 },
+  { id: 'gpt-5.6-terra-272k', name: 'GPT-5.6 Terra 272K', rate: '2.2x', context: 272000 },
   { id: 'gpt-5.6-luna', name: 'GPT-5.6 Luna', rate: '1.1x', context: 1000000 },
+  { id: 'gpt-5.6-luna-272k', name: 'GPT-5.6 Luna 272K', rate: '1.1x', context: 272000 },
 
   // Claude Opus (dot notation from resolveKiroModel)
   { id: 'claude-opus-5', name: 'Claude Opus 5', rate: '2.2x', context: 1000000 },
@@ -169,8 +172,31 @@ const BUNDLED_MODEL_CATALOG: ModelCatalogEntry[] = [
     context: 256000
   },
   { id: 'gpt-5.6-sol-thinking', name: 'GPT-5.6 Sol Thinking', rate: '4.4x', context: 1000000 },
+  {
+    id: 'gpt-5.6-sol-thinking-272k',
+    name: 'GPT-5.6 Sol Thinking 272K',
+    rate: '4.4x',
+    context: 272000
+  },
   { id: 'gpt-5.6-terra-thinking', name: 'GPT-5.6 Terra Thinking', rate: '2.2x', context: 1000000 },
-  { id: 'gpt-5.6-luna-thinking', name: 'GPT-5.6 Luna Thinking', rate: '1.1x', context: 1000000 }
+  {
+    id: 'gpt-5.6-terra-thinking-272k',
+    name: 'GPT-5.6 Terra Thinking 272K',
+    rate: '2.2x',
+    context: 272000
+  },
+  { id: 'gpt-5.6-luna-thinking', name: 'GPT-5.6 Luna Thinking', rate: '1.1x', context: 1000000 },
+  {
+    id: 'gpt-5.6-luna-thinking-272k',
+    name: 'GPT-5.6 Luna Thinking 272K',
+    rate: '1.1x',
+    context: 272000
+  },
+
+  // GPT-5.6 272K variants (two-tier pricing, short context tier)
+  { id: 'gpt-5.6-sol-272k', name: 'GPT-5.6 Sol 272K', rate: '4.4x', context: 272000 },
+  { id: 'gpt-5.6-terra-272k', name: 'GPT-5.6 Terra 272K', rate: '2.2x', context: 272000 },
+  { id: 'gpt-5.6-luna-272k', name: 'GPT-5.6 Luna 272K', rate: '1.1x', context: 272000 }
 ]
 
 /**
