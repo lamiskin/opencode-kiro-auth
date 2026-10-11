@@ -11,3 +11,7 @@ dist/
 .cortexkit
 .serena/
 .kiro/
+
+# screenshots contain account email (PII)
+openchamber-kiro-usage/docs/screenshots/
+.openchamber/

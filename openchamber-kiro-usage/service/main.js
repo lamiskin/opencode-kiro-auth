@@ -3,7 +3,7 @@ const { execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-
+const { getPairedRecords, getUsageSeries, getAgentIndex } = require('./lib');
 const PORT = process.env.OPENCHAMBER_SERVICE_PORT || 0;
 const TOKEN = process.env.OPENCHAMBER_SERVICE_TOKEN || '';
 
@@ -45,79 +45,6 @@ const loadLogFile = (filePath) => {
   }
 };
 
-// Reverse getTimestamp()'s transform: "2026-09-06T23-42-34-917Z" -> "2026-09-06T23:42:34.917Z"
-const parseLogTimestamp = (timestampStr) => {
-  const m = timestampStr.match(/^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z$/);
-  if (!m) return new Date(NaN);
-  const [, datePart, hh, mm, ss, ms] = m;
-  return new Date(`${datePart}T${hh}:${mm}:${ss}.${ms}Z`);
-};
-
-// Build the paired records from request/response files
-const getPairedRecords = (logDir) => {
-  const files = fs.readdirSync(logDir).filter(f => f.endsWith('.json'));
-  const records = [];
-  const paired = new Set();
-
-  for (const file of files) {
-    if (paired.has(file)) continue;
-
-    const isError = file.startsWith('error_');
-    const timestampStr = file.replace(/^error_/, '').replace(/_(request|response)\.json$/, '');
-    const timestamp = parseLogTimestamp(timestampStr);
-    if (isNaN(timestamp.getTime())) {
-      paired.add(file);
-      continue;
-    }
-
-    // Find matching pair
-    const type = file.includes('_request.') ? 'request' : 'response';
-    const otherType = type === 'request' ? 'response' : 'request';
-    const otherFileName = (isError ? 'error_' : '') + timestampStr + '_' + otherType + '.json';
-    const otherFile = files.find(f => f === otherFileName);
-
-    let requestData = null;
-    let responseData = null;
-
-    if (type === 'request') {
-      requestData = loadLogFile(path.join(logDir, file));
-      if (otherFile) {
-        responseData = loadLogFile(path.join(logDir, otherFile));
-        paired.add(file);
-        paired.add(otherFile);
-      }
-    } else {
-      // response without request - skip
-      paired.add(file);
-      continue;
-    }
-
-    if (!requestData) {
-      paired.add(file);
-      continue;
-    }
-
-    records.push({
-      id: timestampStr,
-      timestamp: timestamp.toISOString(),
-      isError: isError || (responseData && responseData.error),
-      email: requestData.email || null,
-      model: requestData.model || responseData?.model || null,
-      conversationId: requestData.conversationId || responseData?.conversationId || null,
-      status: responseData?.status || (isError ? null : null),
-      statusText: responseData?.statusText || null,
-      credits: responseData?.usage?.credits,
-      rate: responseData?.usage?.rate,
-      inputTokens: responseData?.usage?.inputTokens,
-      outputTokens: responseData?.usage?.outputTokens,
-      request: requestData,
-      response: responseData
-    });
-  }
-
-  return records;
-};
-
 const server = http.createServer((req, res) => {
   if (req.method === 'GET' && req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -148,6 +75,32 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({ error: 'Invalid JSON response' }));
       }
     });
+    return;
+  }
+
+  // GET /usage/series?range=6h|24h|7d|30d&from=ISO&to=ISO&bucket=hour|day|auto&split=model|agent
+  if (req.method === 'GET' && req.url.startsWith('/usage/series')) {
+    const logDir = getLogDir();
+    const query = parseQuery(req.url);
+    const dbPath = process.env.OPENCODE_DB_PATH || path.join(process.env.XDG_DATA_HOME || path.join(require('os').homedir(), '.local', 'share'), 'opencode', 'opencode.db');
+
+    const result = getUsageSeries(logDir, {
+      range: query.range || '24h',
+      from: query.from,
+      to: query.to,
+      bucket: query.bucket || 'auto',
+      split: query.split || 'model',
+      dbPath
+    });
+
+    if (result.code) {
+      res.writeHead(result.code, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: result.error }));
+      return;
+    }
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(result));
     return;
   }
 
@@ -232,50 +185,19 @@ const server = http.createServer((req, res) => {
 
     // Parse query params
     const query = parseQuery(req.url);
-    const account = query.account?.toLowerCase();
+    const account = query.account;
     const status = query.status; // 'ok' or 'error'
     const from = query.from ? new Date(query.from) : null;
     const to = query.to ? new Date(query.to) : null;
-    const q = query.q?.toLowerCase();
+    const q = query.q;
+    const agent = query.agent;
+    const model = query.model;
     const limit = Math.min(parseInt(query.limit) || 100, 500);
     const offset = parseInt(query.offset) || 0;
 
-    // Filter records
-    let filtered = records;
-
-    if (account) {
-      filtered = filtered.filter(r => r.email && r.email.toLowerCase().includes(account));
-    }
-
-    if (status === 'ok') {
-      filtered = filtered.filter(r => !r.isError);
-    } else if (status === 'error') {
-      filtered = filtered.filter(r => r.isError);
-    }
-
-    if (from) {
-      filtered = filtered.filter(r => new Date(r.timestamp) >= from);
-    }
-
-    if (to) {
-      filtered = filtered.filter(r => new Date(r.timestamp) <= to);
-    }
-
-    if (q) {
-      filtered = filtered.filter(r => {
-        const model = (r.model || '').toLowerCase();
-        const convId = (r.conversationId || '').toLowerCase();
-        const url = (r.request?.url || '').toLowerCase();
-        const errorMsg = (r.response?.error || r.request?.body?.error || '').toLowerCase();
-        return model.includes(q) || convId.includes(q) || url.includes(q) || errorMsg.includes(q);
-      });
-    }
-
-    // Sort newest first
-    filtered.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-
-    const total = filtered.length;
-    const paginated = filtered.slice(offset, offset + limit);
+    const opts = { account, status, from, to, q, agent, model, limit, offset };
+    const result = getPairedRecords(logDir, opts);
+    const { records: paginated, total } = result;
 
     // Return summary-only records (no request/response payload)
     const summary = paginated.map(r => ({
@@ -290,7 +212,8 @@ const server = http.createServer((req, res) => {
       credits: r.credits,
       rate: r.rate,
       inputTokens: r.inputTokens,
-      outputTokens: r.outputTokens
+      outputTokens: r.outputTokens,
+      agent: r.agent
     }));
 
     res.writeHead(200, { 'Content-Type': 'application/json' });

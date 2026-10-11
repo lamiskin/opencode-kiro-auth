@@ -127,7 +127,6 @@
         .pace-status.ok { color: var(--oc-success-text, #2ecc71); }
         .pace-status.over { color: var(--oc-error-text, #e74c3c); }
         
-        /* Request drill-down styles */
         .tabs {
             display: flex;
             gap: 4px;
@@ -164,6 +163,7 @@
             border-radius: var(--oc-radius, 6px);
             padding: 12px;
             border: 1px solid var(--oc-border, #333);
+            min-width: 0;
         }
         .filter-group {
             display: flex;
@@ -214,14 +214,6 @@
             border-color: var(--oc-primary-text, #e0e0e0);
         }
         
-        .request-row.collapsed {
-            display: block;
-        }
-        
-        .request-row.expanded {
-            display: block;
-        }
-        
         .request-header {
             display: flex;
             gap: 12px;
@@ -262,13 +254,6 @@
         }
         .request-status.ok { background: rgba(46, 204, 113, 0.15); color: var(--oc-success-text, #2ecc71); }
         .request-status.error { background: rgba(231, 76, 60, 0.15); color: var(--oc-error-text, #e74c3c); }
-        
-        .request-conversation {
-            color: var(--oc-muted, #777);
-            font-family: monospace;
-            font-size: 11px;
-            margin-left: auto;
-        }
         
         .request-details {
             margin-top: 10px;
@@ -335,6 +320,222 @@
             border-radius: 3px;
             font-family: monospace;
             color: var(--oc-warning-text, #f39c12);
+        }
+
+        /* Chart styles */
+        .uc {
+            margin-top: 24px;
+            padding: 16px;
+            background: var(--oc-elevated, #2a2a2a);
+            border-radius: var(--oc-radius, 6px);
+            border: 1px solid var(--oc-border, #333);
+            min-width: 0;
+        }
+        .uc-head {
+            margin-bottom: 16px;
+        }
+        .uc-head h2 {
+            margin: 0 0 4px 0;
+            font-size: 18px;
+            color: var(--oc-primary-text, #e0e0e0);
+            font-weight: 600;
+        }
+        .uc-summary {
+            margin: 0;
+            font-size: 13px;
+            color: var(--oc-muted, #888);
+        }
+        .uc-toolbar {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .uc-seg {
+            display: inline-flex;
+            gap: 4px;
+            background: var(--oc-bg, #1a1a1a);
+            border-radius: var(--oc-radius, 4px);
+            padding: 2px;
+        }
+        .uc-btn {
+            padding: 6px 12px;
+            border: none;
+            background: transparent;
+            color: var(--oc-muted, #888);
+            border-radius: var(--oc-radius, 3px);
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s ease;
+        }
+        .uc-btn:hover {
+            color: var(--oc-fg, #e0e0e0);
+        }
+        .uc-btn.active {
+            background: var(--oc-primary-text, #e0e0e0);
+            color: var(--oc-bg, #1a1a1a);
+            font-weight: 500;
+        }
+        .uc-reset {
+            background: var(--oc-hover, #444);
+            color: var(--oc-fg, #e0e0e0);
+            border: 1px solid var(--oc-border, #555);
+        }
+        .uc-legend {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .uc-chip {
+            display: inline-flex;
+            gap: 6px;
+            align-items: center;
+            padding: 4px 8px;
+            border: 1px solid var(--oc-border, #555);
+            background: transparent;
+            color: var(--oc-muted, #888);
+            border-radius: var(--oc-radius, 4px);
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s ease;
+        }
+        .uc-chip:hover {
+            border-color: var(--oc-fg, #e0e0e0);
+            color: var(--oc-fg, #e0e0e0);
+        }
+        .uc-chip.active {
+            border-color: var(--oc-primary-text, #e0e0e0);
+            color: var(--oc-fg, #e0e0e0);
+            background: rgba(227, 102, 241, 0.1);
+        }
+        .uc-swatch {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 2px;
+        }
+        .uc-name {
+            font-weight: 500;
+        }
+        .uc-rate {
+            font-size: 11px;
+            color: var(--oc-muted, #888);
+        }
+        .uc-total {
+            font-size: 11px;
+            color: var(--oc-info-text, #b0b0b0);
+            margin-left: 4px;
+        }
+        .uc-plot {
+            position: relative;
+            display: flex;
+            min-width: 0;
+            overflow: hidden;
+            gap: 8px;
+            margin-bottom: 16px;
+            min-height: 240px;
+        }
+        .uc-yaxis {
+            display: flex;
+            flex-direction: column-reverse;
+            justify-content: space-between;
+            flex: 0 0 40px;
+            font-size: 11px;
+            color: var(--oc-muted, #888);
+            text-align: right;
+            padding-right: 8px;
+        }
+        .uc-plot svg {
+            flex: 1 1 auto;
+            min-width: 0;
+            border-left: 1px solid var(--oc-border, #555);
+            border-bottom: 1px solid var(--oc-border, #555);
+            width: 100%;
+            height: 200px;
+            overflow: visible;
+            touch-action: none;
+            user-select: none;
+        }
+        .uc-brush {
+            fill: var(--oc-primary-text, #e0e0e0);
+            opacity: 0.15;
+            pointer-events: none;
+        }
+        .uc-bar {
+            cursor: pointer;
+            transition: opacity 0.15s ease;
+        }
+        .uc-bar:hover {
+            opacity: 0.8;
+        }
+        .uc-hit {
+            fill: transparent;
+            cursor: pointer;
+        }
+        .uc-hit:focus {
+            outline: 2px solid var(--oc-primary-text, #e0e0e0);
+            outline-offset: -1px;
+        }
+        .uc-label {
+            font-size: 11px;
+            fill: var(--oc-muted, #888);
+            text-anchor: middle;
+        }
+        .uc-tip {
+            position: absolute;
+            bottom: 210px;
+            background: var(--oc-bg, #1a1a1a);
+            border: 1px solid var(--oc-border, #555);
+            border-radius: var(--oc-radius, 4px);
+            padding: 8px 10px;
+            font-size: 12px;
+            color: var(--oc-fg, #e0e0e0);
+            pointer-events: none;
+            z-index: 100;
+            max-width: 200px;
+            white-space: nowrap;
+        }
+        .uc-live {
+            display: none;
+        }
+        .visually-hidden {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+        .uc-empty {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 200px;
+            color: var(--oc-muted, #888);
+            font-size: 14px;
+        }
+        .uc-empty p {
+            margin: 0;
+        }
+        .uc-foot {
+            margin-top: 16px;
+            padding-top: 12px;
+            border-top: 1px solid var(--oc-border, #444);
+            font-size: 12px;
+            color: var(--oc-muted, #888);
+        }
+        .uc-foot p {
+            margin: 4px 0;
+        }
+        .uc[aria-busy="true"] {
+            opacity: 0.6;
+            pointer-events: none;
         }
     </style>
 </head>
