@@ -2,6 +2,7 @@ import { Buffer } from 'node:buffer'
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { rateForLog } from './model-rate.js'
 
 const binaryToBase64Replacer = (_key: string, value: unknown): unknown => {
   if (value instanceof Uint8Array) return Buffer.from(value).toString('base64')
@@ -128,41 +129,11 @@ export function logApiUsage(usage: ApiUsage, timestamp: string): void {
       // File doesn't exist yet, start fresh
     }
 
-    // Get model rate if we have a model
+    // Get model rate from the authoritative catalog
     let rate = '1.0x'
     const model = existingData?.model
     if (model) {
-      // ponytail: Secondary source of truth - must be kept in sync with src/plugin/model-catalog.ts
-      // (BUNDLED_MODEL_CATALOG) and src/plugin/model-registry.ts. When adding/changing a model's rate
-      // in those files, it must also be updated here to avoid circular dependency.
-      const rateMap: Record<string, string> = {
-        // Claude Opus 5.x
-        'claude-opus-5-5': '2.2x',
-        'claude-opus-5': '2.2x',
-        'claude-opus-4-8': '2.2x',
-        'claude-opus-4-7': '2.2x',
-        'claude-opus-4-6': '2.2x',
-        'claude-opus-4-5': '2.2x',
-        // Claude Sonnet 5.x
-        'claude-sonnet-5-5': '1.3x',
-        'claude-sonnet-5': '1.3x',
-        'claude-sonnet-4-6': '1.3x',
-        'claude-sonnet-4-5': '1.3x',
-        'claude-sonnet-4': '1.3x',
-        // Claude Fable 5.x
-        'claude-fable-5-1': '0.5x',
-        'claude-haiku-4-5': '0.4x',
-        'gpt-5.6-sol': '4.4x',
-        'gpt-5.6-terra': '2.2x',
-        'gpt-5.6-luna': '0.6x',
-        'deepseek-3.2': '0.25x',
-        'minimax-m2.5': '0.25x',
-        'glm-5': '0.5x',
-        'minimax-m2.1': '0.15x',
-        'qwen3-coder-next': '0.05x',
-        auto: '1.0x'
-      }
-      rate = rateMap[model] ?? '1.0x'
+      rate = rateForLog(model, warn)
     }
 
     // Merge usage data

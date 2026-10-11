@@ -75,6 +75,12 @@ export const createKiroPlugin =
     initializeRegistry()
 
     return {
+      'chat.headers': async (input: any, output: any) => {
+        if (input.model?.providerID !== id) return
+        output.headers = output.headers || {}
+        output.headers['x-kiro-agent'] = input.agent
+        output.headers['x-kiro-session'] = input.sessionID
+      },
       config: async (input: any) => {
         // Ensure there's an auth entry so OpenCode calls the loader on startup.
         // This is a no-op if the entry already exists.

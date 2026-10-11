@@ -15,6 +15,7 @@ const XHIGH_MODELS = [
   'claude-opus-5-5-thinking',
   'claude-sonnet-5-thinking',
   'claude-sonnet-5-5-thinking',
+  'claude-sonnet-5-1m-thinking',
   'claude-fable-5-1-thinking',
   'gpt-5.6-sol-thinking',
   'gpt-5.6-terra-thinking',
@@ -53,9 +54,13 @@ describe('model registry', () => {
       'claude-opus-5-thinking',
       'claude-opus-5-5-thinking',
       'claude-sonnet-4-5-thinking',
+      'claude-sonnet-4-5-1m-thinking',
       'claude-sonnet-4-6-thinking',
+      'claude-sonnet-4-6-1m-thinking',
       'claude-sonnet-5-thinking',
+      'claude-sonnet-5-1m-thinking',
       'claude-sonnet-5-5-thinking',
+      'claude-opus-4-6-1m-thinking',
       'claude-fable-5-1-thinking'
     ]
     expect(thinkingIDs.sort()).toEqual(expectedThinking.sort())
@@ -132,5 +137,24 @@ describe('model registry', () => {
     expect(registry['claude-opus-5-thinking'].modalities).toEqual(
       registry['claude-opus-5'].modalities
     )
+  })
+
+  test('advertises explicit Claude 1M variants from MODEL_MAPPING', () => {
+    for (const modelID of [
+      'claude-sonnet-4-5-1m',
+      'claude-sonnet-4-6-1m',
+      'claude-sonnet-5-1m',
+      'claude-opus-4-6-1m'
+    ]) {
+      expect(registry[modelID]?.limit.context).toBe(1000000)
+      expect(registry[`${modelID}-thinking`]?.limit.context).toBe(1000000)
+    }
+  })
+
+  test('keeps GPT-5.6 full context separate from 272K pricing companions', () => {
+    for (const modelID of ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna']) {
+      expect(registry[modelID].limit.context).toBe(1000000)
+      expect(registry[`${modelID}-272k`].limit.context).toBe(272000)
+    }
   })
 })

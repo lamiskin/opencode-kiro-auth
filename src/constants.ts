@@ -124,7 +124,43 @@ export const MODEL_MAPPING: Record<string, string> = {
 
 export const SUPPORTED_MODELS = Object.keys(MODEL_MAPPING)
 
-const LONG_CONTEXT_MODELS = new Set(Object.keys(MODEL_MAPPING).filter((k) => k.includes('-1m')))
+/** Explicit -1m variant IDs (e.g., claude-sonnet-5-1m) */
+const EXPLICIT_1M_IDS = new Set(Object.keys(MODEL_MAPPING).filter((k) => k.includes('-1m')))
+
+/**
+ * Base Claude IDs that have 1M context (non-explicit -1m variants).
+ * Derived from MODEL_MAPPING: all entries with opus-4-6 or later / sonnet-5 or later / fable-5-1.
+ */
+function generateBase1MClaude(): Set<string> {
+  const base1m = new Set<string>()
+  const mapping = MODEL_MAPPING
+  for (const key of Object.keys(mapping)) {
+    // Skip explicit -1m variants (already in EXPLICIT_1M_IDS)
+    if (key.includes('-1m')) continue
+    // Claude Opus 4.6+ has 1M context
+    if (
+      key.startsWith('claude-opus-4-6') ||
+      key.startsWith('claude-opus-4-7') ||
+      key.startsWith('claude-opus-4-8') ||
+      key.startsWith('claude-opus-5')
+    ) {
+      base1m.add(key)
+    }
+    // Claude Sonnet 4.6+ and 5+ have 1M context
+    if (key.startsWith('claude-sonnet-4-6') || key.startsWith('claude-sonnet-5')) {
+      base1m.add(key)
+    }
+    // Claude Fable 5.1+ has 1M context
+    if (key.startsWith('claude-fable-5-1')) {
+      base1m.add(key)
+    }
+  }
+  return base1m
+}
+
+const BASE_1M_CLAUDE_IDS = generateBase1MClaude()
+
+const LONG_CONTEXT_MODELS = new Set([...EXPLICIT_1M_IDS, ...BASE_1M_CLAUDE_IDS])
 
 /** Models with 272K context (two-tier pricing tier boundary) */
 const CAPPED_272K_MODELS = new Set(Object.keys(MODEL_MAPPING).filter((k) => k.includes('-272k')))

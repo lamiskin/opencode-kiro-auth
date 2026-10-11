@@ -1,5 +1,6 @@
 import { connectHost } from "@openchamber/sdk";
 import { applyHostReady } from "@openchamber/sdk/ui";
+import { getColor, validateColorMaps } from "./colors.js";
 
 const host = connectHost();
 const contentEl = document.getElementById('content');
@@ -9,6 +10,75 @@ const tabs = document.querySelectorAll('.tab');
 let pollInterval;
 let currentView = 'usage';
 let debounceTimer;
+
+// ====== CHART STATE & PERSISTENCE ======
+
+const chartState = {
+    preset: '24h',
+    split: 'model',
+    hidden: { model: [], agent: [] },
+    window: null,
+    zoomStack: [],
+    data: null,
+    error: null,
+    loading: false,
+    seq: 0,
+    active: null,
+    geom: null
+};
+
+let colorMap = { model: new Map(), agent: new Map() };
+
+function loadState() {
+    try {
+        const stored = localStorage.getItem('kiro-usage:chart:v1');
+        if (stored) {
+            const parsed = JSON.parse(stored);
+            chartState.preset = parsed.preset || '24h';
+            chartState.split = parsed.split || 'model';
+            chartState.hidden = parsed.hidden || { model: [], agent: [] };
+        }
+        const colorStored = localStorage.getItem('kiro-usage:colors:v1');
+        if (colorStored) {
+            try {
+                const parsed = JSON.parse(colorStored);
+                const validated = validateColorMaps(parsed);
+                colorMap = validated;
+            } catch {
+                colorMap = { model: new Map(), agent: new Map() };
+            }
+        } else {
+            colorMap = { model: new Map(), agent: new Map() };
+        }
+    } catch (e) {
+        colorMap = { model: new Map(), agent: new Map() };
+    }
+}
+
+function saveState() {
+    try {
+        localStorage.setItem('kiro-usage:chart:v1', JSON.stringify({
+            preset: chartState.preset,
+            split: chartState.split,
+            hidden: chartState.hidden
+        }));
+        const colors = {};
+        for (const [ns, map] of Object.entries(colorMap)) {
+            colors[ns] = Array.from(map);
+        }
+        localStorage.setItem('kiro-usage:colors:v1', JSON.stringify(colors));
+    } catch (e) {
+        // ignore
+    }
+}
+
+function getColorImpl(key) {
+    const color = getColor(key, chartState.split, colorMap);
+    if (color !== '#d1d5db' && color !== '#9ca3af') {
+        saveState();
+    }
+    return color;
+}
 
 function escapeHtml(str) {
     return String(str)
@@ -30,21 +100,21 @@ function renderLoading() {
 }
 
 function renderError(message) {
-    contentEl.innerHTML = `<div class="error-message">${message}</div>`;
+    contentEl.innerHTML = `<div class="error-message">${escapeHtml(message)}</div>`;
 }
 
 function computeWorkdayPace(now = new Date()) {
     const year = now.getFullYear();
     const month = now.getMonth();
-    
+
     // First day of month
     const firstDay = new Date(year, month, 1);
     // Last day of month
     const lastDay = new Date(year, month + 1, 0);
-    
+
     let totalWorkdays = 0;
     let elapsedWorkdays = 0;
-    
+
     // Count all workdays in the month
     const current = new Date(firstDay);
     while (current <= lastDay) {
@@ -55,7 +125,7 @@ function computeWorkdayPace(now = new Date()) {
         }
         current.setDate(current.getDate() + 1);
     }
-    
+
     // Count elapsed workdays up to and including today
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const start = new Date(firstDay);
@@ -66,13 +136,13 @@ function computeWorkdayPace(now = new Date()) {
         }
         start.setDate(start.getDate() + 1);
     }
-    
+
     return { totalWorkdays, elapsedWorkdays };
 }
 
 function renderAccounts(entries, totalUsed, totalLimit, totalPct, expectedByNow, paceOk, elapsedWorkdays, totalWorkdays) {
     let html = '';
-    
+
     entries.forEach(entry => {
         if (entry.error) {
             html += `
@@ -97,7 +167,7 @@ function renderAccounts(entries, totalUsed, totalLimit, totalPct, expectedByNow,
 
     if (entries.length > 0) {
         html += `<div class="summary">Total: ${totalUsed.toFixed(2)} / ${totalLimit.toFixed(2)} credits (${totalPct}%)</div>`;
-        
+
         if (totalLimit > 0) {
             html += `
                 <div class="pace">
@@ -118,7 +188,7 @@ function updateLastUpdated() {
     const timeEl = document.createElement('div');
     timeEl.className = 'last-updated';
     timeEl.textContent = `Last updated: ${formatTime(new Date())}`;
-    
+
     const existing = contentEl.querySelector('.last-updated');
     if (existing) {
         contentEl.removeChild(existing);
@@ -132,7 +202,7 @@ function formatRelativeTime(timestamp) {
     const date = new Date(timestamp);
     const now = new Date();
     const diff = now - date;
-    
+
     if (diff < 60000) return 'just now';
     if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
     if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
@@ -149,14 +219,14 @@ function renderRequestList(records, total, limit, offset) {
         `;
         return;
     }
-    
+
     let html = `
         <div class="results-header">
             Showing ${Math.min(offset + 1, total)}-${Math.min(offset + records.length, total)} of ${total} requests
         </div>
         <div class="request-list">
     `;
-    
+
     records.forEach(record => {
         const statusClass = record.isError ? 'error' : 'ok';
         const statusText = record.isError ? 'error' : 'ok';
@@ -171,7 +241,7 @@ function renderRequestList(records, total, limit, offset) {
             ? `${record.outputTokens.toLocaleString()} out`
             : null;
         const tokensDisplay = [inputTokensDisplay, outputTokensDisplay].filter(Boolean).join(' / ');
-        
+
         html += `
             <div class="request-row collapsed" data-id="${record.id}">
                 <div class="request-header">
@@ -184,9 +254,9 @@ function renderRequestList(records, total, limit, offset) {
             </div>
         `;
     });
-    
+
     html += '</div>';
-    
+
     // Pagination
     if (total > limit) {
         html += `
@@ -199,9 +269,9 @@ function renderRequestList(records, total, limit, offset) {
             </div>
         `;
     }
-    
+
     contentEl.innerHTML = html;
-    
+
     // Attach event listeners for expandable rows
     document.querySelectorAll('.request-row').forEach(row => {
         row.addEventListener('click', (e) => {
@@ -211,7 +281,7 @@ function renderRequestList(records, total, limit, offset) {
             toggleRowDetails(row);
         });
     });
-    
+
     // Attach pagination listeners
     document.querySelectorAll('.pagination-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -228,7 +298,7 @@ function renderRequestList(records, total, limit, offset) {
 function toggleRowDetails(row) {
     const detailsEl = row.querySelector('.request-details');
     const isCollapsed = row.classList.contains('collapsed');
-    
+
     if (isCollapsed) {
         row.classList.remove('collapsed');
         row.classList.add('expanded');
@@ -241,7 +311,7 @@ function toggleRowDetails(row) {
                 detailsEl.innerHTML = '<em style="color: var(--oc-error-text, #e74c3c)">Failed to load detail</em>';
                 return;
             }
-            
+
             // Build request summary (model, conversation, message preview, tool counts)
             let requestSummaryHtml = '';
             {
@@ -303,7 +373,7 @@ function toggleRowDetails(row) {
                         <div><strong style="color: var(--oc-info-text, #b0b0b0)">Context used:</strong> ${usage.contextUsagePercentage !== undefined ? usage.contextUsagePercentage.toFixed(1) + '%' : '—'}</div>
                        </div>`
                     : '';
-                
+
                 usageHtml = `
                     <div style="margin-bottom: 12px; padding: 10px; background: var(--oc-bg, #1a1a1a); border-radius: var(--oc-radius, 4px); border: 1px solid var(--oc-border, #444);">
                         <div style="font-size: 13px; margin-bottom: 8px; color: var(--oc-primary-text, #e0e0e0); font-weight: 500;">Usage Summary</div>
@@ -313,12 +383,12 @@ function toggleRowDetails(row) {
                     </div>
                 `;
             }
-            
+
             const requestHtml = `
                 <strong style="color: var(--oc-success-text, #2ecc71)">Request:</strong>
                 <pre>${JSON.stringify(record.request, null, 2)}</pre>
             `;
-            const responseHtml = record.response 
+            const responseHtml = record.response
                 ? `
                     <strong style="color: var(--oc-primary-text, #e0e0e0)">Response:</strong>
                     <pre>${JSON.stringify(record.response, null, 2)}</pre>
@@ -370,14 +440,14 @@ async function loadRequests(filters = {}) {
         if (filters.q) params.append('q', filters.q);
         params.append('limit', filters.limit || 100);
         params.append('offset', filters.offset || 0);
-        
+
         const result = await host.serviceRequest({
             method: 'GET',
             path: `/requests?${params.toString()}`
         });
-        
+
         const data = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
-        
+
         if (data.logDirMissing) {
             renderEmptyLogDir();
         } else {
@@ -403,7 +473,7 @@ function applyFilters() {
     const from = document.getElementById('filter-from')?.value || '';
     const to = document.getElementById('filter-to')?.value || '';
     const q = document.getElementById('filter-q')?.value || '';
-    
+
     loadRequests({ account, status, from, to, q });
 }
 
@@ -413,7 +483,7 @@ const debouncedApplyFilters = debounce(applyFilters, 300);
 
 function switchTab(view) {
     currentView = view;
-    
+
     tabs.forEach(tab => {
         if (tab.dataset.view === view) {
             tab.classList.add('active');
@@ -421,7 +491,7 @@ function switchTab(view) {
             tab.classList.remove('active');
         }
     });
-    
+
     if (view === 'usage') {
         renderLoading();
         refreshUsage();
@@ -430,7 +500,593 @@ function switchTab(view) {
     }
 }
 
-// ====== USAGE REFRESH (existing) ======
+function formatBucketLabel(date, bucket, split) {
+    if (bucket === 'hour') {
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } else {
+        // Short format for daily: "08/10" or "Thu 8" to save space
+        const day = date.getDate();
+        const month = date.getMonth() + 1;
+        const dow = date.toLocaleDateString([], { weekday: 'short' });
+        return `${dow} ${day}`;
+    }
+}
+
+function renderChart(data, section) {
+    const emptyDiv = section.querySelector('.uc-empty');
+    if (!data || !data.buckets || data.buckets.length === 0) {
+        emptyDiv.textContent = data && data.totals && data.totals.credits === 0 ? 'No credit usage in this range' : 'No data available';
+        emptyDiv.hidden = false;
+        const svg = section.querySelector('.uc-plot svg');
+        svg.innerHTML = '';
+        section.querySelector('.uc-live').textContent = '';
+        return;
+    }
+
+    emptyDiv.hidden = true;
+    const svg = section.querySelector('.uc-plot svg');
+    if (!svg) return;
+
+    const plot = section.querySelector('.uc-plot');
+    let W = Math.max(1, plot.getBoundingClientRect().width - 40);
+    if (W <= 0 || !isFinite(W)) W = 400;
+
+    const buckets = data.buckets;
+    const keys = data.keys || [];
+    const visibleKeys = keys.filter(k => !chartState.hidden[chartState.split]?.includes(k.key));
+
+    const maxTotal = Math.max(...buckets.map(b => b.total), 1);
+    const H = 200;
+    const PH = H;  // Plot height
+    const N = buckets.length;
+    const slot = W / N;
+    const barW = Math.max(1, slot * 0.8);
+
+    const ticks = [];
+    const tickCount = 4;
+    for (let i = 0; i <= tickCount; i++) {
+        ticks.push((maxTotal / tickCount) * i);
+    }
+
+    const yAxis = section.querySelector('.uc-yaxis');
+    yAxis.innerHTML = ticks.map(t => `<div>${t.toFixed(1)}</div>`).join('');
+    // ponytail: sync y-axis height with plot; padding-bottom handles label strip
+    yAxis.style.minHeight = PH + 'px';
+    yAxis.style.paddingBottom = '28px';
+
+    let bars = '';
+    let hitRects = '';
+    let labelsSvg = '';
+    // Adaptive label spacing: estimate label width (~7px/char for 11px font at 96dpi) + 12px gap
+    // Prefer showing every Nth label so labels don't overlap
+    const estimatedLabelWidth = data.bucket === 'hour' ? 35 : 50;  // HH:MM vs "Thu 8"
+    const minGap = 12;
+    const minSlotForLabel = estimatedLabelWidth + minGap;
+    const labelSpacing = Math.max(1, Math.ceil(minSlotForLabel / slot));
+
+    // Always show first label; then every Nth label
+    const shouldShowLabel = (i) => i === 0 || (i % labelSpacing === 0);
+    let hoverIdx = null;
+    let hoverRect = '';
+
+    for (let i = 0; i < N; i++) {
+        const bucket = buckets[i];
+        const x = i * slot;
+        let y = PH;
+
+        for (const k of visibleKeys) {
+            const credits = bucket.series[k.key] || 0;
+            if (credits > 0) {
+                const h = (credits / maxTotal) * PH;
+                const color = getColorImpl(k.key);
+                bars += `<rect x="${x}" y="${y - h}" width="${barW}" height="${h}" fill="${color}" class="uc-bar" data-key="${escapeHtml(k.key)}" data-credits="${credits.toFixed(4)}" data-idx="${i}"/>`;
+                y -= h;
+            }
+        }
+
+        hitRects += `<rect x="${i * slot}" y="0" width="${slot}" height="${PH}" class="uc-hit" data-idx="${i}" tabindex="0"/>`;
+
+        if (shouldShowLabel(i)) {
+            const bucket = buckets[i];
+            const date = new Date(bucket.start);
+            const label = formatBucketLabel(date, data.bucket, chartState.split);
+            // Labels below baseline at y=PH+16; dominant-baseline:hanging aligns top of text to y
+            labelsSvg += `<text x="${i * slot + slot / 2}" y="${PH + 16}" text-anchor="middle" dominant-baseline="hanging" class="uc-label">${escapeHtml(label)}</text>`;
+            // Thin tick mark at baseline
+            labelsSvg += `<line x1="${i * slot + slot / 2}" y1="${PH}" x2="${i * slot + slot / 2}" y2="${PH + 4}" stroke="var(--oc-border, #555)" stroke-width="1"/>`;
+        }
+    }
+
+    bars += hitRects + labelsSvg;
+    // SVG viewBox and height: PH (200) for bars, +28 for label strip below
+    svg.setAttribute('viewBox', `0 0 ${W} ${PH + 28}`);
+    svg.setAttribute('height', PH + 28);
+    svg.setAttribute('width', W);
+    svg.innerHTML = bars;
+
+    chartState.geom = { slot, W, N, PH };
+
+    // Track pinned state for hover/click
+    let pinnedIdx = null;
+    let brushActive = false;
+
+    svg.querySelectorAll('.uc-hit').forEach(hit => {
+        hit.addEventListener('click', () => {
+            const idx = parseInt(hit.dataset.idx);
+            pinnedIdx = pinnedIdx === idx ? null : idx;  // Toggle pin
+            if (pinnedIdx !== null) {
+                chartState.active = pinnedIdx;
+                updateTooltip(pinnedIdx, data, section, true);  // true = from click/keyboard
+            } else {
+                section.querySelector('.uc-tip').style.display = 'none';
+            }
+        });
+        hit.addEventListener('keydown', (e) => {
+            const idx = parseInt(hit.dataset.idx);
+            if (e.key === 'ArrowLeft' && idx > 0) {
+                e.preventDefault();
+                chartState.active = idx - 1;
+                pinnedIdx = idx - 1;
+                section.querySelectorAll('.uc-hit')[idx - 1].focus();
+                updateTooltip(idx - 1, data, section, true);
+            } else if (e.key === 'ArrowRight' && idx < N - 1) {
+                e.preventDefault();
+                chartState.active = idx + 1;
+                pinnedIdx = idx + 1;
+                section.querySelectorAll('.uc-hit')[idx + 1].focus();
+                updateTooltip(idx + 1, data, section, true);
+            } else if (e.key === 'Home') {
+                e.preventDefault();
+                chartState.active = 0;
+                pinnedIdx = 0;
+                section.querySelectorAll('.uc-hit')[0].focus();
+                updateTooltip(0, data, section, true);
+            } else if (e.key === 'End') {
+                e.preventDefault();
+                chartState.active = N - 1;
+                pinnedIdx = N - 1;
+                section.querySelectorAll('.uc-hit')[N - 1].focus();
+                updateTooltip(N - 1, data, section, true);
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                const bucket = data.buckets[idx];
+                chartState.zoomStack.push(chartState.window);
+                if (data.bucket === 'day') {
+                    chartState.window = { from: bucket.start, to: bucket.end };
+                } else if (data.bucket === 'hour') {
+                    if (N > 5) {
+                        chartState.window = { from: new Date(new Date(bucket.start).getTime() - 2*3600000).toISOString(), to: new Date(new Date(bucket.end).getTime() + 2*3600000).toISOString() };
+                    } else {
+                        return;
+                    }
+                }
+                chartState.active = null;
+                pinnedIdx = null;
+                section.querySelector('.uc-tip').style.display = 'none';
+                fetchChart();
+            } else if (e.key === '-') {
+                e.preventDefault();
+                zoomOut();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                chartState.active = null;
+                pinnedIdx = null;
+                section.querySelector('.uc-tip').style.display = 'none';
+            }
+        });
+    });
+
+    // Hover tooltip: show on pointermove unless brushing
+    svg.addEventListener('pointermove', (e) => {
+        if (brushActive) {
+            section.querySelector('.uc-tip').style.display = 'none';
+            return;
+        }
+        const g = chartState.geom;
+        if (!g) return;
+        const r = svg.getBoundingClientRect();
+        const x = (e.clientX - r.left) * (g.W / r.width);
+        const idx = Math.max(0, Math.min(g.N - 1, Math.floor(x / g.slot)));
+        const bucket = data.buckets[idx];
+        // Skip empty buckets
+        if (bucket.total === 0) {
+            section.querySelector('.uc-tip').style.display = 'none';
+            return;
+        }
+        updateTooltip(idx, data, section, false);  // false = from hover, no aria-live
+    });
+
+    svg.addEventListener('pointerleave', () => {
+        // Hide tooltip on leave unless pinned
+        if (pinnedIdx === null) {
+            section.querySelector('.uc-tip').style.display = 'none';
+        }
+    });
+}
+
+function updateTooltip(idx, data, section, fromClick = false) {
+    const bucket = data.buckets[idx];
+    const tip = section.querySelector('.uc-tip');
+    const visibleKeys = data.keys.filter(k => !chartState.hidden[chartState.split]?.includes(k.key));
+
+    const date = new Date(bucket.start);
+    const endDate = new Date(bucket.end);
+    let timeStr = date.toLocaleTimeString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) +
+        ' – ' + endDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    let keysHtml = visibleKeys
+        .filter(k => bucket.series[k.key])
+        .map(k => `<div style="font-size:11px; color:var(--oc-fg);">${escapeHtml(k.key)}: ${bucket.series[k.key].toFixed(2)} cr</div>`)
+        .join('');
+
+    tip.innerHTML = `<div style="font-weight:500;">${timeStr}</div><div>${bucket.total.toFixed(2)} credits · ${bucket.count} requests</div>${keysHtml}`;
+    tip.style.display = 'block';
+
+    // Position tooltip above bar
+    const g = chartState.geom;
+    if (g) {
+        const plot = section.querySelector('.uc-plot');
+        const plotRect = plot.getBoundingClientRect();
+        const tipWidth = Math.min(tip.offsetWidth || 200, 200);
+        const slotCenter = (idx + 0.5) * g.slot + 40;
+        let left = slotCenter - tipWidth / 2;
+        const maxLeft = g.W + 40;
+        if (left + tipWidth > maxLeft) {
+            left = maxLeft - tipWidth;
+        }
+        if (left < 40) {
+            left = 40;
+        }
+        tip.style.left = left + 'px';
+    }
+
+    // Only announce on click/keyboard, not on hover
+    if (fromClick) {
+        const liveEl = section.querySelector('.uc-live');
+        const announcement = `${timeStr}: ${bucket.total.toFixed(2)} credits, ${bucket.count} requests`;
+        liveEl.textContent = announcement;
+    }
+}
+
+function zoomOut() {
+    if (!chartState.data) return;
+    if (chartState.zoomStack.length > 0) {
+        chartState.window = chartState.zoomStack.pop();
+    } else {
+        const span = new Date(chartState.data.to) - new Date(chartState.data.from);
+        const nextSpan = span * 2;
+        if (nextSpan > 1000 * 60 * 60 * 24 * 400) {
+            chartState.window = null;
+        } else {
+            const center = (new Date(chartState.data.from).getTime() + new Date(chartState.data.to).getTime()) / 2;
+            const halfNext = nextSpan / 2;
+            chartState.window = {
+                from: new Date(center - halfNext).toISOString(),
+                to: new Date(center + halfNext).toISOString()
+            };
+        }
+    }
+    fetchChart();
+}
+
+async function fetchChart() {
+    chartState.seq++;
+    const seq = chartState.seq;
+    chartState.loading = true;
+
+    const section = document.querySelector('.uc');
+    if (section) {
+        section.setAttribute('aria-busy', 'true');
+    }
+
+    try {
+        const params = new URLSearchParams();
+        params.append('split', chartState.split);
+
+        if (chartState.window) {
+            params.append('from', chartState.window.from);
+            params.append('to', chartState.window.to);
+            params.append('bucket', 'auto');
+        } else {
+            params.append('range', chartState.preset);
+        }
+
+        const result = await host.serviceRequest({
+            method: 'GET',
+            path: `/usage/series?${params.toString()}`
+        });
+
+        if (seq !== chartState.seq) return;
+
+        const data = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
+        if (result.status && result.status >= 400) throw new Error(data?.error || `HTTP ${result.status}`);
+
+        chartState.data = data;
+        chartState.error = null;
+
+        const section = document.querySelector('.uc');
+        if (section) {
+            updateChartDisplay(section);
+            renderChart(data, section);
+        }
+    } catch (error) {
+        chartState.error = error.message;
+        const freshSection = document.querySelector('.uc');
+        if (freshSection) {
+            const plot = freshSection.querySelector('.uc-plot');
+            if (plot) {
+                plot.innerHTML = `<div class="uc-empty"><p>Error: ${escapeHtml(error.message)}</p></div>`;
+            }
+        }
+    } finally {
+        chartState.loading = false;
+        const freshSection = document.querySelector('.uc');
+        if (freshSection) {
+            freshSection.setAttribute('aria-busy', 'false');
+        }
+    }
+}
+
+function updateChartDisplay(section) {
+    const data = chartState.data;
+    if (!data) return;
+
+    const summary = `${data.totals.credits.toFixed(2)} credits · ${data.totals.requests} requests${data.keys.length > 0 ? ` · top: ${data.keys[0].key} (${Math.round(data.keys[0].total / data.totals.credits * 100)}%)` : ''}`;
+    const headerEl = section.querySelector('.uc-head p');
+    if (headerEl) {
+        headerEl.textContent = summary;
+    }
+
+    const resetBtn = section.querySelector('.uc-reset');
+    if (resetBtn) {
+        resetBtn.style.display = chartState.window ? 'inline-block' : 'none';
+    }
+
+    const legendEl = section.querySelector('.uc-legend');
+    if (legendEl) {
+        legendEl.innerHTML = `
+            ${data.keys.map(k => `
+                <button class="uc-chip ${chartState.hidden[chartState.split]?.includes(k.key) ? '' : 'active'}" data-key="${escapeHtml(k.key)}" aria-pressed="${!chartState.hidden[chartState.split]?.includes(k.key)}">
+                    <span class="uc-swatch" style="background: ${getColorImpl(k.key)}"></span>
+                    <span class="uc-name">${escapeHtml(k.key)}</span>
+                    ${k.rate ? `<span class="uc-rate">${k.rate}</span>` : ''}
+                    <span class="uc-total">${k.total.toFixed(2)} cr</span>
+                </button>
+            `).join('')}
+            <button class="uc-chip uc-all">All</button>
+            <button class="uc-chip uc-none">None</button>
+        `;
+
+        legendEl.querySelectorAll('[data-key]').forEach(chip => {
+            chip.addEventListener('click', () => {
+                const key = chip.dataset.key;
+                const hidden = chartState.hidden[chartState.split] || [];
+                const idx = hidden.indexOf(key);
+                if (idx >= 0) {
+                    hidden.splice(idx, 1);
+                } else {
+                    hidden.push(key);
+                }
+                chip.classList.toggle('active');
+                saveState();
+                renderChart(chartState.data, section);
+            });
+        });
+
+        legendEl.querySelector('.uc-all')?.addEventListener('click', () => {
+            chartState.hidden[chartState.split] = [];
+            legendEl.querySelectorAll('[data-key]').forEach(chip => chip.classList.add('active'));
+            saveState();
+            renderChart(chartState.data, section);
+        });
+
+        legendEl.querySelector('.uc-none')?.addEventListener('click', () => {
+            chartState.hidden[chartState.split] = Array.from(legendEl.querySelectorAll('[data-key]'), c => c.dataset.key);
+            legendEl.querySelectorAll('[data-key]').forEach(chip => chip.classList.remove('active'));
+            saveState();
+            renderChart(chartState.data, section);
+        });
+    }
+
+    const footEl = section.querySelector('.uc-foot');
+    if (footEl) {
+        let footHtml = '';
+        if (data.totals.skipped) footHtml += `<p>${data.totals.skipped} entries skipped</p>`;
+        if (data.totals.unreadable) footHtml += `<p>${data.totals.unreadable} log files unreadable</p>`;
+
+        if (chartState.split === 'agent' && data.meta?.agentAttribution) {
+            const attr = data.meta.agentAttribution;
+            const parts = [];
+            if (attr.captured) parts.push(`${attr.captured} captured`);
+            if (attr.inferred) parts.push(`${attr.inferred} inferred from session history`);
+            if (attr.ambiguous) parts.push(`${attr.ambiguous} ambiguous (parallel same-model agents)`);
+            const unknownTotal = (attr.unknown.no_candidate || 0) + (attr.unknown.db_unavailable || 0) + (attr.unknown.out_of_coverage || 0);
+            if (unknownTotal) parts.push(`${unknownTotal} unknown`);
+            if (parts.length) footHtml += `<p style="font-size: 12px; color: var(--oc-muted);">${parts.join(', ')}</p>`;
+            if (data.meta.agentIndexError) {
+                footHtml += `<p style="font-size: 12px; color: var(--oc-warning-text);">⚠ Agent index error: ${escapeHtml(data.meta.agentIndexError)}</p>`;
+            }
+        }
+
+        footEl.innerHTML = footHtml;
+    }
+}
+
+function buildChartSection() {
+    const section = document.createElement('section');
+    section.className = 'uc';
+    section.setAttribute('aria-labelledby', 'uc-title');
+
+    section.innerHTML = `
+        <header class="uc-head">
+            <h2 id="uc-title">Credit usage</h2>
+            <p class="uc-summary">Loading...</p>
+        </header>
+        <div class="uc-toolbar">
+            <div class="uc-seg">
+                <button class="uc-btn ${chartState.preset === '6h' ? 'active' : ''}" data-preset="6h" aria-pressed="${chartState.preset === '6h'}">6h</button>
+                <button class="uc-btn ${chartState.preset === '24h' ? 'active' : ''}" data-preset="24h" aria-pressed="${chartState.preset === '24h'}">24h</button>
+                <button class="uc-btn ${chartState.preset === '7d' ? 'active' : ''}" data-preset="7d" aria-pressed="${chartState.preset === '7d'}">7d</button>
+                <button class="uc-btn ${chartState.preset === '30d' ? 'active' : ''}" data-preset="30d" aria-pressed="${chartState.preset === '30d'}">30d</button>
+            </div>
+            <div class="uc-seg">
+                <button class="uc-btn ${chartState.split === 'model' ? 'active' : ''}" data-split="model" aria-pressed="${chartState.split === 'model'}">Split by Model</button>
+                <button class="uc-btn ${chartState.split === 'agent' ? 'active' : ''}" data-split="agent" aria-pressed="${chartState.split === 'agent'}">Split by Agent</button>
+            </div>
+            <button class="uc-btn uc-reset" style="display: ${chartState.window ? 'inline-block' : 'none'};">Reset zoom</button>
+        </div>
+        <div class="uc-legend"></div>
+        <div class="uc-plot">
+            <div class="uc-yaxis"></div>
+            <svg role="group" tabindex="0" aria-label="Credit usage chart, use arrow keys to navigate"></svg>
+            <div class="uc-tip" role="tooltip" style="display: none;"></div>
+            <div class="uc-empty" hidden></div>
+        </div>
+        <div aria-live="polite" class="uc-live visually-hidden"></div>
+        <div class="uc-foot"></div>
+    `;
+
+    section.querySelectorAll('[data-preset]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            chartState.preset = btn.dataset.preset;
+            chartState.window = null;
+            chartState.zoomStack = [];
+            chartState.active = null;
+            saveState();
+            section.querySelectorAll('[data-preset]').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            fetchChart();
+        });
+    });
+
+    section.querySelectorAll('[data-split]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            chartState.split = btn.dataset.split;
+            chartState.active = null;
+            saveState();
+            section.querySelectorAll('[data-split]').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            fetchChart();
+        });
+    });
+
+    section.querySelector('.uc-reset')?.addEventListener('click', () => {
+        chartState.window = null;
+        chartState.zoomStack = [];
+        chartState.active = null;
+        section.querySelector('.uc-reset').style.display = 'none';
+        fetchChart();
+    });
+
+    // ====== RESIZE OBSERVER ======
+    const plot = section.querySelector('.uc-plot');
+    let resizeRAF = null;
+    const resizeObserver = new ResizeObserver(() => {
+        if (resizeRAF !== null) cancelAnimationFrame(resizeRAF);
+        resizeRAF = requestAnimationFrame(() => {
+            if (chartState.data?.buckets?.length) {
+                renderChart(chartState.data, section);
+            }
+            resizeRAF = null;
+        });
+    });
+    if (plot) resizeObserver.observe(plot);
+    section._resizeObserver = resizeObserver;
+
+    // ====== DRAG-BRUSH ======
+    const svg = section.querySelector('.uc-plot svg');
+    let brush = null;
+    let suppressClick = false;
+    let brushActive = false;  // Track brush state for hover tooltip
+
+    const idxAt = (e) => {
+        const g = chartState.geom;
+        if (!g) return 0;
+        const r = svg.getBoundingClientRect();
+        const x = (e.clientX - r.left) * (g.W / r.width);
+        return Math.max(0, Math.min(g.N - 1, Math.floor(x / g.slot)));
+    };
+
+    const cancel = () => {
+        if (!brush) return;
+        brush.el?.remove();
+        svg.releasePointerCapture?.(brush.id);
+        brush = null;
+        brushActive = false;  // Reset flag
+    };
+
+    svg.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0 || !chartState.data?.buckets?.length) return;
+        brush = { a: idxAt(e), b: idxAt(e), el: null, id: e.pointerId };
+        brushActive = true;  // Set flag
+        svg.setPointerCapture(e.pointerId);
+    });
+
+    svg.addEventListener('pointermove', (e) => {
+        if (!brush) return;
+        brush.b = idxAt(e);
+        if (brush.a === brush.b) {
+            brush.el?.setAttribute('width', 0);
+            return;
+        }
+        if (!brush.el) {
+            brush.el = document.createElementNS('http://www.w3.org/2000/svg','rect');
+            brush.el.setAttribute('class','uc-brush');
+            brush.el.setAttribute('y',0);
+            const g = chartState.geom;
+            brush.el.setAttribute('height', g ? g.PH : 200);
+            svg.appendChild(brush.el);
+        }
+        const lo = Math.min(brush.a, brush.b);
+        const hi = Math.max(brush.a, brush.b);
+        const s = chartState.geom.slot;
+        brush.el.setAttribute('x', lo * s);
+        brush.el.setAttribute('width', (hi - lo + 1) * s);
+    });
+
+    svg.addEventListener('pointerup', () => {
+        if (!brush) return;
+        const lo = Math.min(brush.a, brush.b);
+        const hi = Math.max(brush.a, brush.b);
+        cancel();
+        if (hi - lo + 1 < 2) return;
+        suppressClick = true;
+        const b = chartState.data.buckets;
+        chartState.zoomStack.push(chartState.window);
+        chartState.window = { from: b[lo].start, to: b[hi].end };
+        chartState.active = null;
+        section.querySelector('.uc-tip').style.display = 'none';
+        fetchChart();
+    });
+
+    svg.addEventListener('pointercancel', cancel);
+
+    svg.addEventListener('click', (e) => {
+        if (suppressClick) {
+            suppressClick = false;
+            e.stopPropagation();
+        }
+    }, true);
+
+    const keydownHandler = (e) => {
+        if (e.key === 'Escape' && brush) {
+            e.preventDefault();
+            cancel();
+        }
+    };
+    document.addEventListener('keydown', keydownHandler);
+    section._keydownHandler = keydownHandler;
+
+    // Cleanup on removal
+    section._cleanup = () => {
+        if (section._resizeObserver) section._resizeObserver.disconnect();
+        if (section._keydownHandler) document.removeEventListener('keydown', section._keydownHandler);
+    };
+
+    return section;
+}
+
+// ====== USAGE REFRESH (updated) ======
 
 async function refreshUsage() {
     try {
@@ -440,23 +1096,39 @@ async function refreshUsage() {
         });
 
         const entries = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
-        
-        const successful = entries.filter(entry => 
+
+        const successful = entries.filter(entry =>
             !entry.error && typeof entry.used === 'number' && typeof entry.limit === 'number' && typeof entry.pct === 'number'
         );
-        
+
         const totalUsed = Number(successful.reduce((sum, entry) => sum + entry.used, 0).toFixed(2));
         const totalLimit = Number(successful.reduce((sum, entry) => sum + entry.limit, 0).toFixed(2));
         const totalPct = totalLimit > 0 ? Math.round((totalUsed / totalLimit) * 100) : 0;
-        
-        // Compute monthly workday pace
+
         const { totalWorkdays, elapsedWorkdays } = computeWorkdayPace();
         const expectedByNow = totalWorkdays > 0 ? (totalLimit / totalWorkdays) * elapsedWorkdays : 0;
         const paceOk = totalUsed <= expectedByNow;
-        
+
         renderAccounts(entries, totalUsed, totalLimit, totalPct, expectedByNow, paceOk, elapsedWorkdays, totalWorkdays);
         updateLastUpdated();
-        
+
+        const accountsEl = document.getElementById('accounts');
+        let chartSection = document.querySelector('.uc');
+        if (!chartSection) {
+            chartSection = buildChartSection();
+            if (accountsEl && accountsEl.parentElement === contentEl) {
+                accountsEl.after(chartSection);
+            } else {
+                contentEl.appendChild(chartSection);
+            }
+        } else if (chartSection._cleanup) {
+            chartSection._cleanup();
+            chartSection = buildChartSection();
+            const oldSection = document.querySelector('.uc');
+            oldSection?.replaceWith(chartSection);
+        }
+
+        await fetchChart();
         host.setBadge(totalPct >= 80 ? totalPct : null);
     } catch (error) {
         renderError(`Failed to fetch usage: ${error.message}`);
@@ -471,14 +1143,15 @@ host.onReady((ctx) => {
     applyHostReady(ctx, document.documentElement);
     if (initialized) return;
     initialized = true;
-    
+    loadState();
+
     // Tab switching
     tabs.forEach(tab => {
         tab.addEventListener('click', () => {
             switchTab(tab.dataset.view);
         });
     });
-    
+
     // Create filter controls for requests view
     const filtersContainer = document.createElement('div');
     filtersContainer.className = 'filters';
@@ -509,7 +1182,7 @@ host.onReady((ctx) => {
             <input type="text" id="filter-q" class="filter-input" placeholder="model, conversation, url...">
         </div>
     `;
-    
+
     // Add filter event listeners
     ['filter-account', 'filter-status', 'filter-from', 'filter-to', 'filter-q'].forEach(id => {
         const el = document.getElementById(id);
@@ -517,26 +1190,26 @@ host.onReady((ctx) => {
             el.addEventListener(id === 'filter-status' ? 'change' : 'input', debouncedApplyFilters);
         }
     });
-    
+
     // Hide filters in usage view
     function showFilters(show) {
         filtersContainer.style.display = show ? 'grid' : 'none';
     }
-    
+
     // Initial view - show filters only in requests view
     showFilters(false);
-    
+
     // Inject filters into DOM after header
     const header = document.querySelector('.header');
     if (header) {
         header.after(filtersContainer);
     }
-    
+
     // Initial load
     switchTab('usage');
-    
+
     pollInterval = setInterval(refreshUsage, 5 * 60 * 1000);
-    
+
     // Refresh button for both views
     refreshBtn.addEventListener('click', () => {
         if (currentView === 'usage') {
