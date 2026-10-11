@@ -48,7 +48,7 @@ const BUNDLED_MODEL_CATALOG: ModelCatalogEntry[] = [
   { id: 'gpt-5.6-luna', name: 'GPT-5.6 Luna', rate: '0.6x', context: 1000000 },
   { id: 'gpt-5.6-luna-272k', name: 'GPT-5.6 Luna 272K', rate: '0.6x', context: 272000 },
 
-  // Claude Opus (dot notation from resolveKiroModel)
+  // Claude Opus
   { id: 'claude-opus-5', name: 'Claude Opus 5', rate: '2.2x', context: 1000000 },
   { id: 'claude-opus-5.5', name: 'Claude Opus 5.5', rate: '2.0x', context: 1000000 },
   { id: 'claude-opus-4-8', name: 'Claude Opus 4.8', rate: '2.2x', context: 1000000 },
@@ -58,6 +58,7 @@ const BUNDLED_MODEL_CATALOG: ModelCatalogEntry[] = [
   { id: 'claude-opus-4-6', name: 'Claude Opus 4.6', rate: '2.2x', context: 1000000 },
   { id: 'claude-opus-4.6', name: 'Claude Opus 4.6', rate: '2.2x', context: 1000000 },
   { id: 'claude-opus-4.6-1m', name: 'Claude Opus 4.6 1M', rate: '2.2x', context: 1000000 },
+  { id: 'claude-opus-4-6-1m', name: 'Claude Opus 4.6 1M', rate: '2.2x', context: 1000000 },
   { id: 'claude-opus-4-5', name: 'Claude Opus 4.5', rate: '2.2x', context: 200000 },
   { id: 'claude-opus-4.5', name: 'Claude Opus 4.5', rate: '2.2x', context: 200000 },
 
@@ -68,9 +69,11 @@ const BUNDLED_MODEL_CATALOG: ModelCatalogEntry[] = [
   { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', rate: '1.3x', context: 1000000 },
   { id: 'claude-sonnet-4.6', name: 'Claude Sonnet 4.6', rate: '1.3x', context: 1000000 },
   { id: 'claude-sonnet-4.6-1m', name: 'Claude Sonnet 4.6 1M', rate: '1.3x', context: 1000000 },
+  { id: 'claude-sonnet-4-6-1m', name: 'Claude Sonnet 4.6 1M', rate: '1.3x', context: 1000000 },
   { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5', rate: '1.3x', context: 200000 },
   { id: 'claude-sonnet-4.5', name: 'Claude Sonnet 4.5', rate: '1.3x', context: 200000 },
   { id: 'claude-sonnet-4.5-1m', name: 'Claude Sonnet 4.5 1M', rate: '1.3x', context: 1000000 },
+  { id: 'claude-sonnet-4-5-1m', name: 'Claude Sonnet 4.5 1M', rate: '1.3x', context: 1000000 },
   { id: 'claude-sonnet-4', name: 'Claude Sonnet 4.0', rate: '1.3x', context: 200000 },
 
   // Claude Fable
@@ -110,6 +113,13 @@ const BUNDLED_MODEL_CATALOG: ModelCatalogEntry[] = [
     context: 200000
   },
   {
+    id: 'claude-opus-4-5-thinking',
+    name: 'Claude Opus 4.5 Thinking',
+    rate: '2.2x',
+    context: 200000
+  },
+
+  {
     id: 'claude-sonnet-4-6-thinking',
     name: 'Claude Sonnet 4.6 Thinking',
     rate: '1.3x',
@@ -126,12 +136,6 @@ const BUNDLED_MODEL_CATALOG: ModelCatalogEntry[] = [
     name: 'Claude Sonnet 5.5 Thinking',
     rate: '1.3x',
     context: 1000000
-  },
-  {
-    id: 'claude-opus-4-5-thinking',
-    name: 'Claude Opus 4.5 Thinking',
-    rate: '2.2x',
-    context: 200000
   },
   {
     id: 'claude-opus-4-6-thinking',
@@ -329,33 +333,40 @@ export async function refreshModelCatalog(): Promise<void> {
  * Falls back to bundled data if not in active catalog.
  */
 export function getModelCatalogEntry(modelId: string): ModelCatalogEntry | undefined {
-  // Try active catalog first
-  const entry = activeCatalog.get(modelId)
-  if (entry) return entry
-
-  // Try to resolve via MODEL_MAPPING and look up again
-  try {
-    const resolvedId = resolveKiroModel(modelId)
-    const resolvedEntry = activeCatalog.get(resolvedId)
-    if (resolvedEntry) return resolvedEntry
-  } catch {
-    // Model not in mapping
+  for (const id of rateLookupCandidates(modelId)) {
+    const entry = activeCatalog.get(id) ?? BUNDLED_MODEL_CATALOG.find((e) => e.id === id)
+    if (entry) return entry
+    try {
+      const resolved = resolveKiroModel(id)
+      const mapped =
+        activeCatalog.get(resolved) ?? BUNDLED_MODEL_CATALOG.find((e) => e.id === resolved)
+      if (mapped) return mapped
+    } catch {
+      // Model not in mapping
+    }
   }
-
-  // Fall back to bundled data (try direct lookup first)
-  let bundledEntry = BUNDLED_MODEL_CATALOG.find((entry) => entry.id === modelId)
-  if (bundledEntry) return bundledEntry
-
-  // Try bundled data with resolved ID
-  try {
-    const resolvedId = resolveKiroModel(modelId)
-    bundledEntry = BUNDLED_MODEL_CATALOG.find((entry) => entry.id === resolvedId)
-    if (bundledEntry) return bundledEntry
-  } catch {
-    // Model not in mapping
-  }
-
   return undefined
+}
+
+/**
+ * Ids to try for a model: itself, its dot/hyphen spelling (claude-haiku-4.5 <-> claude-haiku-4-5),
+ * then each with -thinking/-272k/-1m suffixes stripped (rate is the same as the base model).
+ * Kiro responses use dot ids while MODEL_MAPPING keys are hyphenated, so both must resolve.
+ */
+export function rateLookupCandidates(modelId: string): string[] {
+  const out: string[] = []
+  const add = (id: string) => out.includes(id) || out.push(id)
+  const alias = (id: string) =>
+    id.includes('.') ? id.replace(/(\d)\.(\d)/g, '$1-$2') : id.replace(/(\d)-(\d)(?=$|-)/g, '$1.$2')
+  let id = modelId
+  for (;;) {
+    add(id)
+    add(alias(id))
+    const stripped = id.replace(/-(thinking|272k|1m)$/, '')
+    if (stripped === id) break
+    id = stripped
+  }
+  return out
 }
 
 /**

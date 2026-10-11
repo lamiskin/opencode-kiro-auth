@@ -35,7 +35,9 @@ describe('kiro.dev documentation sync', () => {
     const registry = buildModelRegistry() as Record<string, any>
 
     const registryModelIDs = new Set(
-      Object.keys(registry).filter((id) => !id.endsWith('-thinking') && !id.endsWith('-272k'))
+      Object.keys(registry).filter(
+        (id) => !id.endsWith('-thinking') && !id.endsWith('-272k') && !id.includes('-1m')
+      )
     )
     const documentedIDs = new Set(KIRO_DOCS_MODELS.map((m) => m.id))
 

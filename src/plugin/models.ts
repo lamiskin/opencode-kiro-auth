@@ -1,4 +1,9 @@
-import { extractRegionFromArn, isLongContextModel, MODEL_MAPPING, SUPPORTED_MODELS } from '../constants'
+import {
+  extractRegionFromArn,
+  isLongContextModel,
+  MODEL_MAPPING,
+  SUPPORTED_MODELS
+} from '../constants'
 import type { KiroAuthDetails } from './types'
 
 const MODEL_CATALOG_TTL_MS = 5 * 60 * 1000
@@ -19,6 +24,14 @@ type CatalogCacheEntry = {
 const catalogCache = new Map<string, CatalogCacheEntry>()
 let activeContextWindows = new Map<string, number>()
 
+/**
+ * Expose runtime context windows (from ListAvailableModels).
+ * Used by registry and tests to check authoritative runtime values.
+ */
+export function getAvailableModelsContext(): Map<string, number> {
+  return new Map(activeContextWindows)
+}
+
 export function resolveKiroModel(model: string): string {
   const resolved = MODEL_MAPPING[model]
   if (!resolved) {
@@ -28,10 +41,12 @@ export function resolveKiroModel(model: string): string {
 }
 
 export function getContextWindowSize(model: string): number {
-  return (
-    activeContextWindows.get(model) ??
-    (isLongContextModel(model) ? 1_000_000 : DEFAULT_CONTEXT_WINDOW)
-  )
+  // Prefer runtime context from ListAvailableModels if available
+  const runtimeContext = activeContextWindows.get(model)
+  if (runtimeContext !== undefined) {
+    return runtimeContext
+  }
+  return isLongContextModel(model) ? 1_000_000 : DEFAULT_CONTEXT_WINDOW
 }
 
 function getCatalogRegion(auth: KiroAuthDetails): string {

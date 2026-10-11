@@ -1,6 +1,6 @@
 import { EFFORT_LEVELS, supportsEffort, supportsXHighEffort, THINKING_BUDGETS } from './effort.js'
 import { getModelRate, initializeModelCatalog, refreshModelCatalog } from './model-catalog.js'
-import { resolveKiroModel } from './models.js'
+import { getAvailableModelsContext, resolveKiroModel } from './models.js'
 
 type Modalities = {
   input: Array<'text' | 'image' | 'pdf'>
@@ -19,12 +19,14 @@ const CONTEXT_256K = { context: 256000, output: 64000 }
 
 /**
  * Static model capabilities that don't change dynamically.
- * Credit multipliers and context windows are fetched from the model catalog.
+ * Credit multipliers are fetched from the model catalog.
+ * Runtime ListAvailableModels context windows override these static limits when
+ * available; static values are used during startup and offline operation.
  */
 interface ModelCapabilities {
   /** Display name, without the credit multiplier suffix. */
   name: string
-  /** Default context/output limits. May be overridden by catalog. */
+  /** Default context/output limits. May be overridden by runtime context. */
   limit: { context: number; output: number }
   /** Input/output modalities supported. */
   modalities: Modalities
@@ -51,7 +53,7 @@ interface ModelCapabilities {
  * Credit multipliers are fetched dynamically from the model catalog.
  * Includes Claude, open-weight, and GPT-5.6 (OpenAI) models.
  */
-const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
+export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
   auto: { name: 'Auto', limit: CONTEXT_200K, modalities: MULTIMODAL },
   'claude-sonnet-4': {
     name: 'Claude Sonnet 4.0',
@@ -71,6 +73,18 @@ const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     modalities: MULTIMODAL,
     thinking: true
   },
+  'claude-sonnet-4-5-1m': {
+    name: 'Claude Sonnet 4.5 1M',
+    limit: CONTEXT_1M,
+    modalities: MULTIMODAL,
+    thinking: true
+  },
+  'claude-sonnet-4-6-1m': {
+    name: 'Claude Sonnet 4.6 1M',
+    limit: CONTEXT_1M,
+    modalities: MULTIMODAL,
+    thinking: true
+  },
   'claude-sonnet-5': {
     name: 'Claude Sonnet 5',
     limit: CONTEXT_1M,
@@ -79,6 +93,12 @@ const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
   },
   'claude-sonnet-5-5': {
     name: 'Claude Sonnet 5.5',
+    limit: CONTEXT_1M,
+    modalities: MULTIMODAL,
+    thinking: true
+  },
+  'claude-sonnet-5-1m': {
+    name: 'Claude Sonnet 5 1M',
     limit: CONTEXT_1M,
     modalities: MULTIMODAL,
     thinking: true
@@ -100,6 +120,12 @@ const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
   },
   'claude-opus-4-6': {
     name: 'Claude Opus 4.6',
+    limit: CONTEXT_1M,
+    modalities: MULTIMODAL,
+    thinking: true
+  },
+  'claude-opus-4-6-1m': {
+    name: 'Claude Opus 4.6 1M',
     limit: CONTEXT_1M,
     modalities: MULTIMODAL,
     thinking: true
@@ -232,10 +258,14 @@ export function buildModelRegistry(): Record<string, unknown> {
   for (const [modelID, caps] of Object.entries(MODEL_CAPABILITIES)) {
     // Get the dynamic credit multiplier from the catalog
     const rate = getModelRate(modelID)
+    // Kiro's runtime limit is authoritative when available; retain the
+    // per-model static capability as the startup/offline fallback.
+    const contextWindow = getAvailableModelsContext().get(modelID) ?? caps.limit.context
+    const limit = { ...caps.limit, context: contextWindow }
 
     models[modelID] = {
       name: `${caps.name} (${rate})`,
-      limit: caps.limit,
+      limit,
       modalities: caps.modalities
     }
 
@@ -244,7 +274,7 @@ export function buildModelRegistry(): Record<string, unknown> {
       const variants = buildVariants(kiroModel, true)
       models[modelID] = {
         name: `${caps.name} (${rate})`,
-        limit: caps.limit,
+        limit,
         modalities: caps.modalities,
         reasoning: true,
         interleaved: { field: 'reasoning_content' },
@@ -272,9 +302,14 @@ export function buildModelRegistry(): Record<string, unknown> {
     const kiroModel = resolveKiroModel(modelID)
     if (!supportsEffort(kiroModel)) continue
 
+    // For thinking variants, resolve context the same way as base models
+    const thinkingContextWindow =
+      getAvailableModelsContext().get(`${modelID}-thinking`) ?? caps.limit.context
+    const thinkingLimit = { ...caps.limit, context: thinkingContextWindow }
+
     models[`${modelID}-thinking`] = {
       name: `${caps.name} Thinking (${rate})`,
-      limit: caps.limit,
+      limit: thinkingLimit,
       modalities: caps.modalities,
       reasoning: true,
       interleaved: { field: 'reasoning_content' },
