@@ -87,6 +87,26 @@ export class RequestHandler {
   }
 
   private async handleKiroRequest(url: string, init: any): Promise<Response> {
+    const h = new Headers(init?.headers)
+    let sessionID = h.get('x-kiro-session') || undefined
+    let usedFallback = false
+    if (!sessionID) {
+      sessionID = h.get('x-opencode-session-id') || undefined
+      if (sessionID) {
+        usedFallback = true
+      }
+    }
+    if (usedFallback) {
+      logger.warn(
+        '[v2] Using x-opencode-session-id as fallback for session tracking (x-kiro-session not present)',
+        { sessionID }
+      )
+    }
+    const tag = {
+      agent: h.get('x-kiro-agent') || undefined,
+      sessionID,
+      kind: h.get('x-kiro-kind') || undefined
+    }
     const body = init?.body ? JSON.parse(init.body) : {}
     const model = this.extractModel(url) || body.model || 'claude-sonnet-4-5'
     const think =
@@ -156,7 +176,7 @@ export class RequestHandler {
 
       const apiTimestamp = this.config.enable_log_api_request ? logger.getTimestamp() : null
       if (apiTimestamp) {
-        this.logSdkRequest(sdkPrep, acc, apiTimestamp)
+        this.logSdkRequest(sdkPrep, acc, apiTimestamp, tag)
       }
       try {
         const client = createSdkClient(
@@ -173,7 +193,7 @@ export class RequestHandler {
         const sdkResponse = await client.send(command)
 
         if (apiTimestamp) {
-          this.logSdkResponse(sdkPrep, apiTimestamp)
+          this.logSdkResponse(sdkPrep, apiTimestamp, tag)
         }
 
         this.handleSuccessfulRequest(acc)
@@ -191,7 +211,7 @@ export class RequestHandler {
         const httpStatus = e?.$metadata?.httpStatusCode
 
         if (httpStatus && apiTimestamp) {
-          this.logSdkError(sdkPrep, e, acc, apiTimestamp)
+          this.logSdkError(sdkPrep, e, acc, apiTimestamp, tag)
         }
 
         if (httpStatus === 403 && !bearerRetried) {
@@ -304,7 +324,12 @@ export class RequestHandler {
     }
   }
 
-  private logSdkRequest(prep: SdkPreparedRequest, acc: ManagedAccount, timestamp: string): void {
+  private logSdkRequest(
+    prep: SdkPreparedRequest,
+    acc: ManagedAccount,
+    timestamp: string,
+    tag?: { agent?: string; sessionID?: string; kind?: string }
+  ): void {
     // Mirrors what the sdk-client middleware injects, so logs reflect the wire body.
     const additionalModelRequestFields = prep.effort
       ? { output_config: { effort: prep.effort } }
@@ -335,6 +360,7 @@ export class RequestHandler {
 
     logger.logApiRequest(
       {
+        ...tag,
         url: `https://q.${prep.region}.amazonaws.com/generateAssistantResponse`,
         method: 'POST',
         headers: { 'x-amzn-kiro-agent-mode': 'vibe' },
@@ -357,9 +383,14 @@ export class RequestHandler {
     )
   }
 
-  private logSdkResponse(prep: SdkPreparedRequest, timestamp: string): void {
+  private logSdkResponse(
+    prep: SdkPreparedRequest,
+    timestamp: string,
+    tag?: { agent?: string; sessionID?: string; kind?: string }
+  ): void {
     logger.logApiResponse(
       {
+        ...tag,
         status: 200,
         statusText: 'OK',
         headers: {},
@@ -374,10 +405,12 @@ export class RequestHandler {
     prep: SdkPreparedRequest,
     error: any,
     acc: ManagedAccount,
-    apiTimestamp: string
+    apiTimestamp: string,
+    tag?: { agent?: string; sessionID?: string; kind?: string }
   ): void {
     const status = error?.$metadata?.httpStatusCode || 0
     const rData = {
+      ...tag,
       status,
       statusText: error?.name || 'Error',
       headers: {},
@@ -388,6 +421,7 @@ export class RequestHandler {
     if (!this.config.enable_log_api_request) {
       logger.logApiError(
         {
+          ...tag,
           url: `https://q.${prep.region}.amazonaws.com/generateAssistantResponse`,
           method: 'POST',
           headers: {},

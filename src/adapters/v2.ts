@@ -26,9 +26,25 @@ interface V2Context {
   model: {
     reload(): void | Promise<void>
   }
+  session?: {
+    hook<Name extends 'model.request'>(
+      name: Name,
+      callback: (input: SessionModelRequest) => Promise<void> | void,
+      options?: { providerID?: string }
+    ): Promise<{ dispose(): void | Promise<void> }>
+  }
   tool: {
     transform(editor: (editor: ToolEditor) => void): Promise<ToolRegistration>
   }
+}
+
+interface SessionModelRequest {
+  readonly sessionID: string
+  readonly agent: string
+  readonly model: string
+  readonly kind: 'primary' | 'compaction' | 'title' | 'generate'
+  baseURL?: string
+  headers: Record<string, string>
 }
 
 interface ProviderEditor {
@@ -214,10 +230,22 @@ function createLocalProxyServer(runtime: Runtime): Promise<LocalProxyServer> {
         }
 
         try {
-          // Pass empty headers object — RequestHandler handles auth itself
+          // RequestHandler handles auth itself; only forward the agent tags it logs.
+          const tagHeaders: Record<string, string> = {}
+          for (const name of ['x-kiro-agent', 'x-kiro-session', 'x-kiro-kind']) {
+            const v = req.headers[name]
+            if (typeof v === 'string' && v) tagHeaders[name] = v
+          }
+          // Fallback to x-opencode-session-id if x-kiro-session not present
+          if (!tagHeaders['x-kiro-session']) {
+            const opencodeSess = req.headers['x-opencode-session-id']
+            if (typeof opencodeSess === 'string' && opencodeSess) {
+              tagHeaders['x-kiro-session'] = opencodeSess
+            }
+          }
           const response: Response = await runtime.requestHandler.handleForced(url, {
             method: req.method,
-            headers: {},
+            headers: tagHeaders,
             body: req.method !== 'GET' && req.method !== 'HEAD' ? bodyStr : undefined
           })
 
@@ -496,6 +524,33 @@ export async function kiroSetup(ctx: V2Context): Promise<(() => void | Promise<v
     })
   })
   registrations.push(providerReg)
+
+  // Register model.request hook to set agent/session/kind headers
+  try {
+    if (ctx.session?.hook) {
+      const modelRequestReg = await ctx.session.hook(
+        'model.request',
+        (input) => {
+          // Only set header if value is defined; never write 'undefined' string
+          if (input.agent !== undefined) {
+            input.headers['x-kiro-agent'] = String(input.agent)
+          }
+          if (input.sessionID !== undefined) {
+            input.headers['x-kiro-session'] = String(input.sessionID)
+          }
+          if (input.kind !== 'primary' && input.kind !== undefined) {
+            input.headers['x-kiro-kind'] = input.kind
+          }
+        },
+        { providerID: 'kiro' }
+      )
+      registrations.push(modelRequestReg)
+    } else {
+      logger.warn('[v2] model.request hook unavailable (ctx.session not provided)')
+    }
+  } catch (e) {
+    logger.warn('[v2] model.request hook registration failed', { error: e })
+  }
 
   // Register tools
   const tools = mapTools(runtime)
