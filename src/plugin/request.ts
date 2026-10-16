@@ -5,7 +5,8 @@ import {
   buildHistory,
   extractToolNamesFromHistory,
   historyHasToolCalling,
-  injectSystemPrompt
+  injectSystemPrompt,
+  trimHistory
 } from '../infrastructure/transformers/history-builder.js'
 import {
   findOriginalToolCall,
@@ -17,12 +18,13 @@ import {
   createToolNameRegistry,
   deduplicateToolResults
 } from '../infrastructure/transformers/tool-transformer.js'
-import { getEffectiveEffort } from './effort.js'
+import { getEffectiveEffort, isOpenAIModel } from './effort.js'
 import {
   convertImagesToKiroFormat,
   extractAllImages,
   extractTextFromParts
 } from './image-handler.js'
+import * as logger from './logger.js'
 import { resolveKiroModel } from './models.js'
 import type {
   CodeWhispererRequest,
@@ -354,7 +356,9 @@ export function transformToSdkRequest(
   think = false,
   budget = 20000,
   showToast?: ToastFunction,
-  effortConfig?: EffortConfig
+  effortConfig?: EffortConfig,
+  historyCapOverride?: number,
+  maxHistoryEntries?: number
 ): SdkPreparedRequest {
   const { request, resolved, convId, toolNameMap, systemChars } = buildCodeWhispererRequest(
     body,
@@ -364,6 +368,52 @@ export function transformToSdkRequest(
     budget,
     showToast
   )
+
+  let historyDropped = 0
+  let historyCap = 0
+
+  // Proactive trim for non-OpenAI models only (unless override set)
+  if (
+    !historyCapOverride &&
+    maxHistoryEntries &&
+    maxHistoryEntries > 0 &&
+    request.conversationState.history &&
+    request.conversationState.history.length > maxHistoryEntries &&
+    !isOpenAIModel(resolved)
+  ) {
+    const {
+      history: trimmed,
+      dropped,
+      cap
+    } = trimHistory(request.conversationState.history, maxHistoryEntries)
+    if (dropped > 0) {
+      const before = request.conversationState.history.length
+      logger.warn(
+        `Proactive history trim: ${before} entries -> ${trimmed.length} (dropped ${dropped}), cap ${cap}`
+      )
+    }
+    request.conversationState.history = trimmed
+    historyDropped = dropped
+    historyCap = cap
+  }
+
+  // Reactive trim override (from request-handler on overflow)
+  if (historyCapOverride !== undefined && request.conversationState.history) {
+    const {
+      history: trimmed,
+      dropped,
+      cap
+    } = trimHistory(request.conversationState.history, historyCapOverride, true)
+    if (dropped > 0) {
+      const before = request.conversationState.history.length
+      logger.warn(
+        `Reactive history trim: ${before} entries -> ${trimmed.length} (dropped ${dropped}), cap ${cap}`
+      )
+    }
+    request.conversationState.history = trimmed
+    historyDropped = dropped
+    historyCap = cap
+  }
 
   // Resolve effort level based on config and model capabilities
   const effort = getEffectiveEffort(
@@ -383,6 +433,8 @@ export function transformToSdkRequest(
     region: extractRegionFromArn(auth.profileArn) ?? auth.region,
     toolNameMap,
     effort,
-    systemChars
+    systemChars,
+    historyDropped,
+    historyCap
   }
 }

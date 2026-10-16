@@ -18,7 +18,13 @@ mock.module('../plugin/logger.js', () => ({
   logApiResponse: () => {
     apiResponseLogCalls++
   },
+  estimateTokens: () => 100,
   logApiUsage: () => {},
+  redactRequestContent: (data: any) => data,
+  initializeLogs: () => {},
+  logShape: () => {},
+  computeHistoryShape: () => [],
+  computeHistoryHashes: () => [],
   warn: () => {}
 }))
 

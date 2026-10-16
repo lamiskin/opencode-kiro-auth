@@ -160,6 +160,19 @@ function applyEnvOverrides(config: KiroConfig): KiroConfig {
     enable_log_api_request: parseBooleanEnv(
       env.KIRO_ENABLE_LOG_API_REQUEST,
       config.enable_log_api_request
+    ),
+
+    log_retention_days: parseNumberEnv(env.KIRO_LOG_RETENTION_DAYS, config.log_retention_days),
+
+    log_redact_content: parseBooleanEnv(env.KIRO_LOG_REDACT_CONTENT, config.log_redact_content),
+
+    log_shape: parseBooleanEnv(env.KIRO_LOG_SHAPE, config.log_shape),
+
+    max_history_entries: parseNumberEnv(env.KIRO_MAX_HISTORY_ENTRIES, config.max_history_entries),
+
+    history_trim_on_overflow: parseBooleanEnv(
+      env.KIRO_HISTORY_TRIM_ON_OVERFLOW,
+      config.history_trim_on_overflow
     )
   }
 }

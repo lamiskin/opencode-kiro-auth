@@ -25,7 +25,11 @@ mock.module('../plugin/logger.js', () => ({
   logApiRequest: () => {},
   logApiResponse: () => {},
   logApiError: () => {},
-  logApiUsage: () => {}
+  logApiUsage: () => {},
+  estimateTokens: () => 100,
+  redactRequestContent: (data: any) => data,
+  initializeLogs: () => {},
+  logShape: () => {}
 }))
 
 import { RequestHandler } from '../core/request/request-handler.js'

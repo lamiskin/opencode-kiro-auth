@@ -28,7 +28,16 @@ mock.module('../plugin/logger.js', () => ({
   logApiRequest: () => {},
   logApiResponse: () => {},
   logApiError: () => {},
-  logApiUsage: () => {}
+  logApiUsage: () => {},
+  estimateTokens: () => 100,
+  redactRequestContent: (data: any) => data,
+  initializeLogs: () => {},
+  logShape: () => {},
+  computeHistoryShape: () => [],
+  computeHistoryHashes: () => [],
+  warn: (msg: any, ctx?: any) => {
+    warnCalls.push({ msg, ctx })
+  }
 }))
 
 import { kiroSetup } from '../adapters/v2.js'

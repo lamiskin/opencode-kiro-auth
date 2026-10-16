@@ -4,6 +4,7 @@ import {
   extractAllImages,
   extractTextFromParts
 } from '../../plugin/image-handler.js'
+import * as logger from '../../plugin/logger.js'
 import type { CodeWhispererMessage } from '../../plugin/types'
 import { getContentText } from './message-transformer.js'
 import { deduplicateToolResults } from './tool-transformer.js'
@@ -217,6 +218,96 @@ export function injectSystemPrompt(
     })
   }
   return history
+}
+
+export function trimHistory(
+  history: CodeWhispererMessage[],
+  maxEntries?: number,
+  exact = false
+): { history: CodeWhispererMessage[]; dropped: number; cap: number } {
+  if (!maxEntries || maxEntries <= 0 || history.length <= maxEntries) {
+    return { history, dropped: 0, cap: maxEntries || 0 }
+  }
+
+  const minFloor = 10
+  const cap = Math.max(minFloor, maxEntries)
+  if (history.length <= cap) {
+    return { history, dropped: 0, cap }
+  }
+
+  // Assert history[0] is a user message; skip if not
+  if (!history[0]?.userInputMessage) {
+    logger.warn('trimHistory: history[0] missing userInputMessage, skipping trim')
+    return { history, dropped: 0, cap }
+  }
+
+  const currentLen = history.length
+  // Hysteresis: drop in 60-entry steps just enough to get back under cap, so the
+  // cut point (and prompt prefix) only moves every ~60 turns: len 181 -> 121, 200 -> 140, 250 -> 130
+  // exact (reactive retry): drop just enough to reach cap, no hysteresis
+  let toDrop = exact ? currentLen - cap : Math.ceil((currentLen - cap) / 60) * 60
+  // Round to even
+  if (toDrop % 2 !== 0) toDrop++
+  toDrop = Math.min(toDrop, currentLen - minFloor)
+
+  const kept: CodeWhispererMessage[] = [history[0]!]
+  const toolUseIds = new Set<string>()
+  const toolResultIds = new Set<string>()
+
+  // First pass: collect tool IDs from dropped range to detect orphans
+  for (let i = 1; i < 1 + toDrop && i < history.length; i++) {
+    const entry = history[i]
+    if (entry?.assistantResponseMessage?.toolUses) {
+      for (const tu of entry.assistantResponseMessage.toolUses) {
+        toolUseIds.add(tu.toolUseId)
+      }
+    }
+    if (entry?.userInputMessage?.userInputMessageContext?.toolResults) {
+      for (const tr of entry.userInputMessage.userInputMessageContext.toolResults) {
+        toolResultIds.add(tr.toolUseId)
+      }
+    }
+  }
+
+  // Extend toDrop if cut would orphan a toolUses/toolResults pair at boundary
+  while (1 + toDrop < history.length) {
+    const nextEntry = history[1 + toDrop]
+    if (nextEntry?.assistantResponseMessage?.toolUses) {
+      const hasPairedResult = nextEntry.assistantResponseMessage.toolUses.some((tu) =>
+        toolResultIds.has(tu.toolUseId)
+      )
+      if (hasPairedResult) {
+        toDrop += 2
+        continue
+      }
+    }
+    if (nextEntry?.userInputMessage?.userInputMessageContext?.toolResults) {
+      const hasPairedUse = nextEntry.userInputMessage.userInputMessageContext.toolResults.some(
+        (tr) => toolUseIds.has(tr.toolUseId)
+      )
+      if (hasPairedUse) {
+        toDrop += 2
+        continue
+      }
+    }
+    break
+  }
+
+  // Keep entries from index 1+toDrop onwards
+  for (let i = 1 + toDrop; i < history.length; i++) {
+    kept.push(history[i]!)
+  }
+
+  // Append truncation marker to history[0] user message content
+  if (kept[0]?.userInputMessage) {
+    const copy = { ...kept[0] }
+    copy.userInputMessage = { ...kept[0].userInputMessage }
+    const marker = `\n\n[Earlier conversation truncated: ${toDrop} messages omitted]`
+    copy.userInputMessage.content = (kept[0].userInputMessage.content || '') + marker
+    kept[0] = copy
+  }
+
+  return { history: kept, dropped: toDrop, cap }
 }
 
 export function historyHasToolCalling(history: CodeWhispererMessage[]): boolean {
