@@ -286,6 +286,23 @@ describe('CodeWhisperer tool compatibility', () => {
     expect(await streaming.text()).toContain('data:')
   })
 
+  test('non-streaming usage falls back to context percentage when Kiro sends no tokenUsage', async () => {
+    const response = await new ResponseHandler().handleSdkSuccess(
+      {
+        generateAssistantResponseResponse: (async function* () {
+          yield { assistantResponseEvent: { content: 'Answer.' } }
+          yield { contextUsageEvent: { contextUsagePercentage: 1 } }
+        })()
+      },
+      MODEL,
+      'conversation-1',
+      false
+    )
+    const usage = (await response.json()).usage
+    expect(usage.prompt_tokens).toBeGreaterThan(0)
+    expect(usage.total_tokens).toBe(usage.prompt_tokens + usage.completion_tokens)
+  })
+
   test('uses the same wire alias in tool specifications and replayed history', () => {
     const prepared: any = transformToSdkRequest(
       {
