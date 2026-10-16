@@ -189,6 +189,14 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     modalities: TEXT_ONLY
   },
 
+  // Kimi
+  'kimi-k3': {
+    name: 'Kimi K3',
+    limit: CONTEXT_1M,
+    modalities: MULTIMODAL,
+    thinking: true
+  },
+
   // GPT-5.6 (OpenAI) - 1M context window as of Sep 2026
   // These models have two-tier pricing: ≤272K at base rate, >272K at 2x rate
   'gpt-5.6-sol': {

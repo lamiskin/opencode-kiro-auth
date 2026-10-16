@@ -92,6 +92,9 @@ const BUNDLED_MODEL_CATALOG: ModelCatalogEntry[] = [
   { id: 'minimax-m2.1', name: 'MiniMax M2.1', rate: '0.15x', context: 200000 },
   { id: 'qwen3-coder-next', name: 'Qwen3 Coder Next', rate: '0.05x', context: 256000 },
 
+  // Kimi
+  { id: 'kimi-k3', name: 'Kimi K3', rate: '2.4x', context: 1000000 },
+
   // Thinking variants resolve to their base models in the catalog,
   // but we include them here for direct lookups by thinking variant ID
   {
@@ -175,6 +178,7 @@ const BUNDLED_MODEL_CATALOG: ModelCatalogEntry[] = [
     rate: '0.05x',
     context: 256000
   },
+  { id: 'kimi-k3-thinking', name: 'Kimi K3 Thinking', rate: '2.4x', context: 1000000 },
   { id: 'gpt-5.6-sol-thinking', name: 'GPT-5.6 Sol Thinking', rate: '4.4x', context: 1000000 },
   {
     id: 'gpt-5.6-sol-thinking-272k',
