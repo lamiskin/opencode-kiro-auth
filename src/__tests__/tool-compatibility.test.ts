@@ -4,7 +4,7 @@ import {
   convertToolsToCodeWhisperer,
   restoreToolName
 } from '../infrastructure/transformers/tool-transformer.js'
-import { transformToSdkRequest } from '../plugin/request.js'
+import { transformToCodeWhisperer, transformToSdkRequest } from '../plugin/request.js'
 import { transformSdkStream } from '../plugin/streaming/sdk-stream-transformer.js'
 
 const MODEL = 'claude-sonnet-4-5'
@@ -245,6 +245,45 @@ describe('CodeWhisperer tool compatibility', () => {
         prepared.conversationState.currentMessage.userInputMessage.userInputMessageContext?.tools
       ).toBeUndefined()
     }
+  })
+
+  test('preserves the requested streaming mode for prepared requests', () => {
+    for (const stream of [false, true, undefined]) {
+      const body = { messages: [{ role: 'user', content: 'Hello' }], stream }
+      const serializedBody = JSON.stringify(body)
+
+      expect(transformToSdkRequest(body, MODEL, auth).streaming).toBe(stream ?? true)
+      expect(transformToSdkRequest(serializedBody, MODEL, auth).streaming).toBe(stream ?? true)
+      expect(transformToCodeWhisperer('', serializedBody, MODEL, auth).streaming).toBe(
+        stream ?? true
+      )
+    }
+  })
+
+  test('converts non-streaming responses to JSON and keeps streaming responses as SSE', async () => {
+    const sdkResponseWithContent = () => ({
+      generateAssistantResponseResponse: (async function* () {
+        yield { assistantResponseEvent: { content: 'Answer.' } }
+      })()
+    })
+
+    const nonStreaming = await new ResponseHandler().handleSdkSuccess(
+      sdkResponseWithContent(),
+      MODEL,
+      'conversation-1',
+      false
+    )
+    expect(nonStreaming.headers.get('Content-Type')).toBe('application/json')
+    expect((await nonStreaming.json()).choices[0].message.content).toBe('Answer.')
+
+    const streaming = await new ResponseHandler().handleSdkSuccess(
+      sdkResponseWithContent(),
+      MODEL,
+      'conversation-1',
+      true
+    )
+    expect(streaming.headers.get('Content-Type')).toBe('text/event-stream')
+    expect(await streaming.text()).toContain('data:')
   })
 
   test('uses the same wire alias in tool specifications and replayed history', () => {
