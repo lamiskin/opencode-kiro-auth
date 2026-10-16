@@ -53,6 +53,12 @@ mock.module('../plugin/logger.js', () => ({
   debug: () => {},
   error: () => {},
   log: () => {},
+  estimateTokens: () => 100,
+  redactRequestContent: (data: any) => data,
+  initializeLogs: () => {},
+  logShape: () => {},
+  computeHistoryShape: () => [],
+  computeHistoryHashes: () => [],
   warn: () => {}
 }))
 

@@ -7,6 +7,7 @@ import { isPermanentError } from '../../plugin/health'
 import * as logger from '../../plugin/logger'
 import { refreshContextWindowSizes } from '../../plugin/models'
 import { transformToSdkRequest } from '../../plugin/request'
+import { estimateTokens } from '../../plugin/response'
 import { createSdkClient } from '../../plugin/sdk-client'
 import { syncFromKiroCli } from '../../plugin/sync/kiro-cli'
 import type { KiroAuthDetails, ManagedAccount, SdkPreparedRequest } from '../../plugin/types'
@@ -39,6 +40,7 @@ export class RequestHandler {
     private repository: AccountRepository,
     private port?: HostPort
   ) {
+    logger.initializeLogs(config.log_retention_days)
     this.accountSelector = new AccountSelector(accountManager, config, syncFromKiroCli, repository)
     this.tokenRefresher = new TokenRefresher(config, accountManager, syncFromKiroCli, repository)
     this.errorHandler = new ErrorHandler(config, accountManager, repository)
@@ -120,6 +122,8 @@ export class RequestHandler {
     let retry = 0
     let bearerRetried = false
     let consecutiveNullAccounts = 0
+    let historyTrimmed = false
+    let capOverride: number | undefined = undefined
     const retryContext = this.retryStrategy.createContext()
 
     const notify = this.port?.notify ?? (() => {})
@@ -172,11 +176,19 @@ export class RequestHandler {
 
       await refreshContextWindowSizes(auth)
 
-      const sdkPrep = this.prepareSdkRequest(init?.body, model, auth, think, budget, notify)
+      const sdkPrep = this.prepareSdkRequest(
+        init?.body,
+        model,
+        auth,
+        think,
+        budget,
+        notify,
+        capOverride
+      )
 
       const apiTimestamp = this.config.enable_log_api_request ? logger.getTimestamp() : null
       if (apiTimestamp) {
-        this.logSdkRequest(sdkPrep, acc, apiTimestamp, tag)
+        this.logSdkRequest(sdkPrep, acc, apiTimestamp, tag, retry)
       }
       try {
         const client = createSdkClient(
@@ -193,7 +205,7 @@ export class RequestHandler {
         const sdkResponse = await client.send(command)
 
         if (apiTimestamp) {
-          this.logSdkResponse(sdkPrep, apiTimestamp, tag)
+          this.logSdkResponse(sdkPrep, apiTimestamp, tag, retry)
         }
 
         this.handleSuccessfulRequest(acc)
@@ -211,7 +223,7 @@ export class RequestHandler {
         const httpStatus = e?.$metadata?.httpStatusCode
 
         if (httpStatus && apiTimestamp) {
-          this.logSdkError(sdkPrep, e, acc, apiTimestamp, tag)
+          this.logSdkError(sdkPrep, e, acc, apiTimestamp, tag, retry)
         }
 
         if (httpStatus === 403 && !bearerRetried) {
@@ -263,6 +275,24 @@ export class RequestHandler {
           const rawMsg = e?.message || `Kiro Error: ${httpStatus}`
           const errMsg = `Kiro Error: ${httpStatus} - ${String(rawMsg).slice(0, 500)}`
           if (/input is too long/i.test(rawMsg)) {
+            // Reactive trim on 'input is too long' 400: declare capOverride/trimmedOnce outside loop
+            if (
+              this.config.history_trim_on_overflow &&
+              !historyTrimmed &&
+              sdkPrep.conversationState.history
+            ) {
+              const currentHistLength = sdkPrep.conversationState.history.length
+              if (currentHistLength > 10) {
+                historyTrimmed = true
+                const overrideCap = Math.max(10, Math.floor(currentHistLength * 0.6))
+                capOverride = overrideCap
+                logger.warn(
+                  `Reactive history trim on overflow: ${currentHistLength} entries -> ${overrideCap} (60%)`
+                )
+                // Continue main loop: prepareSdkRequest, logSdkRequest, account handling all run again
+                continue
+              }
+            }
             return new Response(
               JSON.stringify({
                 error: {
@@ -304,12 +334,23 @@ export class RequestHandler {
     auth: KiroAuthDetails,
     think: boolean,
     budget: number,
-    showToast?: (message: string, variant: 'info' | 'warning' | 'success' | 'error') => void
+    showToast?: (message: string, variant: 'info' | 'warning' | 'success' | 'error') => void,
+    historyCapOverride?: number
   ): SdkPreparedRequest {
-    return transformToSdkRequest(body, model, auth, think, budget, showToast, {
-      effort: this.config.effort,
-      autoEffortMapping: this.config.auto_effort_mapping
-    })
+    return transformToSdkRequest(
+      body,
+      model,
+      auth,
+      think,
+      budget,
+      showToast,
+      {
+        effort: this.config.effort,
+        autoEffortMapping: this.config.auto_effort_mapping
+      },
+      historyCapOverride,
+      this.config.max_history_entries
+    )
   }
 
   private handleSuccessfulRequest(acc: ManagedAccount): void {
@@ -328,9 +369,9 @@ export class RequestHandler {
     prep: SdkPreparedRequest,
     acc: ManagedAccount,
     timestamp: string,
-    tag?: { agent?: string; sessionID?: string; kind?: string }
+    tag?: { agent?: string; sessionID?: string; kind?: string },
+    attempt: number = 0
   ): void {
-    // Mirrors what the sdk-client middleware injects, so logs reflect the wire body.
     const additionalModelRequestFields = prep.effort
       ? { output_config: { effort: prep.effort } }
       : undefined
@@ -341,7 +382,10 @@ export class RequestHandler {
     const userInputMessage = currentMessage?.userInputMessage
     const userInputMessageContext = userInputMessage?.userInputMessageContext || {}
 
-    // ponytail: sizes for debugging input token composition
+    // Compute historyShape: [role, chars, toolUses, toolResults] per entry
+    const historyShape = logger.computeHistoryShape(history)
+
+    // Sizes for debugging input token composition
     const sizes = {
       history: JSON.stringify(history).length,
       historyMessages: history.length,
@@ -353,49 +397,81 @@ export class RequestHandler {
         ? JSON.stringify(userInputMessageContext.toolResults).length
         : 0,
       images: userInputMessage?.images ? JSON.stringify(userInputMessage.images).length : 0,
-      // system is a subset of history (merged into history[0] by injectSystemPrompt)
       system: prep.systemChars ?? 0,
-      total: JSON.stringify(conversationState).length
+      total: JSON.stringify(conversationState).length,
+      totalBytes: Buffer.byteLength(JSON.stringify(conversationState), 'utf8'),
+      toolCount: (userInputMessageContext.tools || []).length,
+      estInputTokens: estimateTokens(JSON.stringify(conversationState)),
+      historyDropped: prep.historyDropped ?? 0,
+      historyCap: prep.historyCap ?? 0
     }
 
-    logger.logApiRequest(
-      {
-        ...tag,
-        url: `https://q.${prep.region}.amazonaws.com/generateAssistantResponse`,
-        method: 'POST',
-        headers: { 'x-amzn-kiro-agent-mode': 'vibe' },
-        sizes,
-        body: {
-          conversationState: {
-            chatTriggerType: conversationState.chatTriggerType,
-            conversationId: conversationState.conversationId,
-            historyLength: history.length,
-            currentMessage: currentMessage
-          },
-          profileArn: prep.profileArn,
-          ...(additionalModelRequestFields ? { additionalModelRequestFields } : {})
+    // Build request data object
+    const requestDataBase = {
+      ...tag,
+      timestamp,
+      url: `https://q.${prep.region}.amazonaws.com/generateAssistantResponse`,
+      method: 'POST',
+      headers: { 'x-amzn-kiro-agent-mode': 'vibe' },
+      sizes,
+      body: {
+        conversationState: {
+          chatTriggerType: conversationState.chatTriggerType,
+          conversationId: conversationState.conversationId,
+          historyLength: history.length,
+          currentMessage: currentMessage
         },
-        conversationId: prep.conversationId,
-        model: prep.effectiveModel,
-        email: acc.email
+        profileArn: prep.profileArn,
+        ...(additionalModelRequestFields ? { additionalModelRequestFields } : {})
       },
-      timestamp
-    )
+      conversationId: prep.conversationId,
+      model: prep.effectiveModel,
+      email: acc.email,
+      attempt
+    }
+
+    const requestData = this.config.log_redact_content
+      ? logger.redactRequestContent(requestDataBase)
+      : requestDataBase
+
+    logger.logApiRequest(requestData, timestamp)
+
+    // Opt-in shape dump
+    if (this.config.log_shape) {
+      logger.logShape(
+        {
+          model: prep.effectiveModel,
+          sessionID: tag?.sessionID,
+          attempt,
+          sizes,
+          historyShape,
+          historyHashes: logger.computeHistoryHashes(history),
+          tools: ((userInputMessageContext.tools || []) as any[]).map((t) => ({
+            name: t?.toolSpecification?.name,
+            bytes: JSON.stringify(t).length
+          }))
+        },
+        timestamp
+      )
+    }
   }
 
   private logSdkResponse(
     prep: SdkPreparedRequest,
     timestamp: string,
-    tag?: { agent?: string; sessionID?: string; kind?: string }
+    tag?: { agent?: string; sessionID?: string; kind?: string },
+    attempt: number = 0
   ): void {
     logger.logApiResponse(
       {
         ...tag,
+        timestamp,
         status: 200,
         statusText: 'OK',
         headers: {},
         conversationId: prep.conversationId,
-        model: prep.effectiveModel
+        model: prep.effectiveModel,
+        attempt
       },
       timestamp
     )
@@ -406,36 +482,50 @@ export class RequestHandler {
     error: any,
     acc: ManagedAccount,
     apiTimestamp: string,
-    tag?: { agent?: string; sessionID?: string; kind?: string }
+    tag?: { agent?: string; sessionID?: string; kind?: string },
+    attempt: number = 0
   ): void {
     const status = error?.$metadata?.httpStatusCode || 0
-    const rData = {
-      ...tag,
-      status,
-      statusText: error?.name || 'Error',
-      headers: {},
-      error: `Kiro Error: ${status} - ${error?.message || 'Unknown'}`,
-      conversationId: prep.conversationId,
-      model: prep.effectiveModel
+
+    // Redact response headers: drop authorization, secrets, tokens
+    const safeHeaders: Record<string, string> = {}
+    const respHeaders = error?.$response?.headers || {}
+    for (const [key, value] of Object.entries(respHeaders)) {
+      const lowerKey = String(key).toLowerCase()
+      if (!/authorization|x-amz-security-token|cookie|token|secret/i.test(lowerKey)) {
+        safeHeaders[key] = String(value)
+      }
     }
-    if (!this.config.enable_log_api_request) {
-      logger.logApiError(
-        {
-          ...tag,
-          url: `https://q.${prep.region}.amazonaws.com/generateAssistantResponse`,
-          method: 'POST',
-          headers: {},
-          body: null,
-          conversationId: prep.conversationId,
-          model: prep.effectiveModel,
-          email: acc.email
-        },
-        rData,
-        logger.getTimestamp()
-      )
-    } else {
-      logger.logApiResponse(rData, apiTimestamp)
+
+    // Extract AWS SDK v3 diagnostic fields
+    const raw = {
+      name: error?.name,
+      fault: error?.$fault || undefined,
+      message: error?.message || 'Unknown',
+      requestId: error?.$metadata?.requestId,
+      metadata: {
+        httpStatusCode: error?.$metadata?.httpStatusCode,
+        extendedRequestId: error?.$metadata?.extendedRequestId,
+        attempts: error?.$metadata?.attempts
+      }
     }
+
+    // Write to plain <ts>_response.json (not error_<ts>_response.json)
+    logger.logApiResponse(
+      {
+        ...tag,
+        timestamp: apiTimestamp,
+        status,
+        statusText: error?.name || 'Error',
+        headers: safeHeaders,
+        error: `Kiro Error: ${status} - ${error?.message || 'Unknown'}`,
+        raw,
+        conversationId: prep.conversationId,
+        model: prep.effectiveModel,
+        attempt
+      },
+      apiTimestamp
+    )
   }
 
   private async triggerReauth(): Promise<boolean> {

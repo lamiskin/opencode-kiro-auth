@@ -128,6 +128,10 @@ export interface SdkPreparedRequest {
   effort?: Effort
   /** Char length of the merged system prompt (sent inside history[0]); for size logging only */
   systemChars?: number
+  /** Number of messages dropped by trimHistory in this request */
+  historyDropped?: number
+  /** History cap applied (maxEntries or hysteresis threshold) */
+  historyCap?: number
 }
 
 export type AccountSelectionStrategy = z.infer<typeof AccountSelectionStrategySchema>

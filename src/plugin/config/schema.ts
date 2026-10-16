@@ -100,7 +100,26 @@ export const KiroConfigSchema = z.object({
   // structured results. Requires a Pro account (profileArn); on free Builder ID
   // accounts the tool is not registered. Disable to avoid overlap with other
   // search tools/MCP servers.
-  web_search_enabled: z.boolean().default(true)
+  web_search_enabled: z.boolean().default(true),
+
+  // Log retention: prune kiro-logs files older than N days at startup.
+  // Default 0 = never prune. Panel offers 30d range, so defaults must not delete.
+  log_retention_days: z.number().min(0).max(365).default(0),
+
+  // Redact sensitive content from request logs: replaces currentMessage text
+  // and email with length + sha256 prefix. Default false (panel needs full bodies for /requests/detail).
+  log_redact_content: z.boolean().default(false),
+
+  // Opt-in shape dump: log model, sizes, historyShape, tools, and attempt metadata.
+  log_shape: z.boolean().default(false),
+
+  // Max history entries to keep before proactive trim on non-OpenAI models.
+  // 0 disables proactive trim. Reactive trim on overflow always applies (use history_trim_on_overflow to disable).
+  max_history_entries: z.number().min(0).max(1000).default(180),
+
+  // Enable reactive history trim when SDK returns 'input is too long' 400 error.
+  // When true, retry with trimmed history at 60% of current size before failing.
+  history_trim_on_overflow: z.boolean().default(true)
 })
 
 export type KiroConfig = z.infer<typeof KiroConfigSchema>
@@ -120,5 +139,10 @@ export const DEFAULT_CONFIG: KiroConfig = {
   auto_sync_kiro_cli: true,
   enable_log_api_request: false,
   auto_effort_mapping: true,
-  web_search_enabled: true
+  web_search_enabled: true,
+  log_retention_days: 0,
+  log_redact_content: false,
+  log_shape: false,
+  max_history_entries: 180,
+  history_trim_on_overflow: true
 }
