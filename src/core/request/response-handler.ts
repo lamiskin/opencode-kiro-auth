@@ -1,5 +1,7 @@
 import { restoreToolName } from '../../infrastructure/transformers/tool-transformer.js'
 import { debug, logApiUsage } from '../../plugin/logger.js'
+import { getContextWindowSize } from '../../plugin/models.js'
+import { estimateTokens } from '../../plugin/response.js'
 import { transformSdkStream } from '../../plugin/streaming/sdk-stream-transformer.js'
 import type { ToolNameMap } from '../../plugin/types.js'
 
@@ -94,12 +96,15 @@ export class ResponseHandler {
     let cacheWriteInputTokens: number | undefined
     let contextUsagePercentage: number | undefined
     let meteringUsage: number | undefined
+    let textOnlyContent = ''
+    let tokenUsageReceived = false
 
     const eventStream = sdkResponse.generateAssistantResponseResponse
     if (eventStream) {
       for await (const event of eventStream) {
         if (event.assistantResponseEvent?.content) {
           content += event.assistantResponseEvent.content
+          textOnlyContent += event.assistantResponseEvent.content
         }
         if (event.toolUseEvent) {
           const fragment = event.toolUseEvent
@@ -124,6 +129,7 @@ export class ResponseHandler {
         }
         if (event.metadataEvent?.tokenUsage) {
           const usage = event.metadataEvent.tokenUsage
+          tokenUsageReceived = true
           if (typeof usage.uncachedInputTokens === 'number') {
             inputTokens = usage.uncachedInputTokens
           }
@@ -143,6 +149,12 @@ export class ResponseHandler {
             contextUsagePercentage = usage.contextUsagePercentage
           }
         }
+        if (typeof event.metadataEvent?.contextUsagePercentage === 'number') {
+          contextUsagePercentage = event.metadataEvent.contextUsagePercentage
+        }
+        if (event.contextUsageEvent?.contextUsagePercentage) {
+          contextUsagePercentage = event.contextUsageEvent.contextUsagePercentage
+        }
         if (event.meteringEvent?.usage !== undefined) {
           meteringUsage = event.meteringEvent.usage
           const usage = event.meteringEvent.usage
@@ -151,6 +163,15 @@ export class ResponseHandler {
         } else if (event.meteringEvent) {
           debug(`Kiro SDK response completed without meteringUsage captured for model=${model}`)
         }
+      }
+    }
+
+    // Same estimate the streaming path uses when Kiro sends no tokenUsage
+    if (!tokenUsageReceived) {
+      outputTokens = estimateTokens(textOnlyContent)
+      if (contextUsagePercentage !== undefined && contextUsagePercentage > 0) {
+        const total = Math.round((getContextWindowSize(model) * contextUsagePercentage) / 100)
+        inputTokens = Math.max(0, total - outputTokens)
       }
     }
 

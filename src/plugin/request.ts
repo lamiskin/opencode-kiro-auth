@@ -41,6 +41,7 @@ interface TransformResult {
   convId: string
   toolNameMap: ToolNameMap
   systemChars: number
+  streaming: boolean
 }
 
 interface EffortConfig {
@@ -300,7 +301,8 @@ function buildCodeWhispererRequest(
     resolved,
     convId,
     toolNameMap: toolNameRegistry.toOriginalMap(),
-    systemChars: sys.length
+    systemChars: sys.length,
+    streaming: req.stream ?? true
   }
 }
 
@@ -312,7 +314,7 @@ export function transformToCodeWhisperer(
   think = false,
   budget = 20000
 ): PreparedRequest {
-  const { request, resolved, convId, toolNameMap } = buildCodeWhispererRequest(
+  const { request, resolved, convId, toolNameMap, streaming } = buildCodeWhispererRequest(
     body,
     model,
     auth,
@@ -342,7 +344,7 @@ export function transformToCodeWhisperer(
       },
       body: JSON.stringify(request)
     },
-    streaming: true,
+    streaming,
     effectiveModel: resolved,
     conversationId: convId,
     toolNameMap
@@ -360,14 +362,8 @@ export function transformToSdkRequest(
   historyCapOverride?: number,
   maxHistoryEntries?: number
 ): SdkPreparedRequest {
-  const { request, resolved, convId, toolNameMap, systemChars } = buildCodeWhispererRequest(
-    body,
-    model,
-    auth,
-    think,
-    budget,
-    showToast
-  )
+  const { request, resolved, convId, toolNameMap, systemChars, streaming } =
+    buildCodeWhispererRequest(body, model, auth, think, budget, showToast)
 
   let historyDropped = 0
   let historyCap = 0
@@ -427,7 +423,7 @@ export function transformToSdkRequest(
   return {
     conversationState: request.conversationState,
     profileArn: request.profileArn,
-    streaming: true,
+    streaming,
     effectiveModel: resolved,
     conversationId: convId,
     region: extractRegionFromArn(auth.profileArn) ?? auth.region,
