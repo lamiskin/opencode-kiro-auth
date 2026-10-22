@@ -61,7 +61,8 @@ describe('model registry', () => {
       'claude-sonnet-5-1m-thinking',
       'claude-sonnet-5-5-thinking',
       'claude-opus-4-6-1m-thinking',
-      'claude-fable-5-1-thinking'
+      'claude-fable-5-1-thinking',
+      'kimi-k3-thinking'
     ]
     expect(thinkingIDs.sort()).toEqual(expectedThinking.sort())
   })
