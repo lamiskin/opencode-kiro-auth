@@ -626,7 +626,7 @@ function renderChart(data, section) {
 
     // Build cumulative line and dots
     for (let i = 0; i < N; i++) {
-        const cumY = PH - (cumulative[i] / maxCumulative) * PH;
+        const cumY = PH - (cumulative[i] / maxCumulative) * (PH - 10);
         const cumX = i * slot + slot / 2;
         if (i === 0) {
             cumulativeLine = `M ${cumX} ${cumY}`;
@@ -643,7 +643,7 @@ function renderChart(data, section) {
     }
     cumulativeRightAxis = `<g class="uc-cumulative-axis" font-size="11" fill="rgba(255,255,255,0.4)" text-anchor="start">`;
     cumulativeTicks.forEach((tick) => {
-        const y = PH - (tick / maxCumulative) * PH;
+        const y = PH - (tick / maxCumulative) * (PH - 10);
         cumulativeRightAxis += `<text x="${W + 4}" y="${y + 4}">${tick.toFixed(1)}</text>`;
     });
     cumulativeRightAxis += `</g>`;
