@@ -1183,7 +1183,8 @@ textarea.oc-sdk-input { height: auto; padding: 8px 12px; resize: vertical; }
     loading: false,
     seq: 0,
     active: null,
-    geom: null
+    geom: null,
+    cumulativeData: null
   };
   var colorMap = { model: /* @__PURE__ */ new Map(), agent: /* @__PURE__ */ new Map() };
   function loadState() {
@@ -1581,6 +1582,17 @@ ${responseHtml}`;
       return `${dow} ${day}`;
     }
   }
+  function computeCumulativeData(buckets, visibleKeys) {
+    const cumulative = [];
+    let sum = 0;
+    for (const bucket of buckets) {
+      for (const k of visibleKeys) {
+        sum += bucket.series[k.key] || 0;
+      }
+      cumulative.push(sum);
+    }
+    return cumulative;
+  }
   function renderChart(data, section) {
     const emptyDiv = section.querySelector(".uc-empty");
     if (!data || !data.buckets || data.buckets.length === 0) {
@@ -1595,11 +1607,14 @@ ${responseHtml}`;
     const svg = section.querySelector(".uc-plot svg");
     if (!svg) return;
     const plot = section.querySelector(".uc-plot");
-    let W = Math.max(1, plot.getBoundingClientRect().width - 40);
+    let W = Math.max(1, plot.getBoundingClientRect().width - 96);
     if (W <= 0 || !isFinite(W)) W = 400;
     const buckets = data.buckets;
     const keys = data.keys || [];
     const visibleKeys = keys.filter((k) => !chartState.hidden[chartState.split]?.includes(k.key));
+    const cumulative = computeCumulativeData(buckets, visibleKeys);
+    chartState.cumulativeData = cumulative;
+    const maxCumulative = Math.max(...cumulative, 1);
     const maxTotal = Math.max(...buckets.map((b) => b.total), 1);
     const H = 200;
     const PH = H;
@@ -1648,6 +1663,32 @@ ${responseHtml}`;
       }
     }
     bars += hitRects + labelsSvg;
+    let cumulativeLine = "";
+    let cumulativeDots = "";
+    let cumulativeRightAxis = "";
+    for (let i = 0; i < N; i++) {
+      const cumY = PH - cumulative[i] / maxCumulative * PH;
+      const cumX = i * slot + slot / 2;
+      if (i === 0) {
+        cumulativeLine = `M ${cumX} ${cumY}`;
+      } else {
+        cumulativeLine += ` L ${cumX} ${cumY}`;
+      }
+      cumulativeDots += `<circle cx="${cumX}" cy="${cumY}" r="2" fill="white" opacity="0.7" class="uc-cumulative-dot"/>`;
+    }
+    const cumulativeTicks = [];
+    for (let i = 0; i <= tickCount; i++) {
+      cumulativeTicks.push(maxCumulative / tickCount * i);
+    }
+    cumulativeRightAxis = `<g class="uc-cumulative-axis" font-size="11" fill="rgba(255,255,255,0.4)" text-anchor="start">`;
+    cumulativeTicks.forEach((tick) => {
+      const y = PH - tick / maxCumulative * PH;
+      cumulativeRightAxis += `<text x="${W + 4}" y="${y + 4}">${tick.toFixed(1)}</text>`;
+    });
+    cumulativeRightAxis += `</g>`;
+    bars += `<g class="uc-cumulative" stroke="white" stroke-width="1.5" fill="none" opacity="0.7"><path d="${cumulativeLine}"/></g>`;
+    bars += cumulativeDots;
+    bars += cumulativeRightAxis;
     svg.setAttribute("viewBox", `0 0 ${W} ${PH + 28}`);
     svg.setAttribute("height", PH + 28);
     svg.setAttribute("width", W);
@@ -1751,12 +1792,12 @@ ${responseHtml}`;
     const endDate = new Date(bucket.end);
     let timeStr = date.toLocaleTimeString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) + " \u2013 " + endDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     let keysHtml = visibleKeys.filter((k) => bucket.series[k.key]).map((k) => `<div style="font-size:11px; color:var(--oc-fg);">${escapeHtml(k.key)}: ${bucket.series[k.key].toFixed(2)} cr</div>`).join("");
-    tip.innerHTML = `<div style="font-weight:500;">${timeStr}</div><div>${bucket.total.toFixed(2)} credits \xB7 ${bucket.count} requests</div>${keysHtml}`;
+    const cumulative = chartState.cumulativeData?.[idx];
+    const cumulativeHtml = cumulative !== void 0 ? `<div style="font-size:11px; color:rgba(255,255,255,0.5);">Cumulative: ${cumulative.toFixed(2)} cr</div>` : "";
+    tip.innerHTML = `<div style="font-weight:500;">${timeStr}</div><div>${bucket.total.toFixed(2)} credits \xB7 ${bucket.count} requests</div>${keysHtml}${cumulativeHtml}`;
     tip.style.display = "block";
     const g = chartState.geom;
     if (g) {
-      const plot = section.querySelector(".uc-plot");
-      const plotRect = plot.getBoundingClientRect();
       const tipWidth = Math.min(tip.offsetWidth || 200, 200);
       const slotCenter = (idx + 0.5) * g.slot + 40;
       let left = slotCenter - tipWidth / 2;
@@ -1768,6 +1809,8 @@ ${responseHtml}`;
         left = 40;
       }
       tip.style.left = left + "px";
+      tip.style.bottom = "auto";
+      tip.style.top = "4px";
     }
     if (fromClick) {
       const liveEl = section.querySelector(".uc-live");

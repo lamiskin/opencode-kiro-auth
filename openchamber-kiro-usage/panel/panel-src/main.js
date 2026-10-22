@@ -24,7 +24,8 @@ const chartState = {
     loading: false,
     seq: 0,
     active: null,
-    geom: null
+    geom: null,
+    cumulativeData: null
 };
 
 let colorMap = { model: new Map(), agent: new Map() };
@@ -512,6 +513,21 @@ function formatBucketLabel(date, bucket, split) {
     }
 }
 
+
+
+// Compute cumulative credits from buckets filtered by visible keys
+function computeCumulativeData(buckets, visibleKeys) {
+    const cumulative = [];
+    let sum = 0;
+    for (const bucket of buckets) {
+        for (const k of visibleKeys) {
+            sum += bucket.series[k.key] || 0;
+        }
+        cumulative.push(sum);
+    }
+    return cumulative;
+}
+
 function renderChart(data, section) {
     const emptyDiv = section.querySelector('.uc-empty');
     if (!data || !data.buckets || data.buckets.length === 0) {
@@ -528,12 +544,17 @@ function renderChart(data, section) {
     if (!svg) return;
 
     const plot = section.querySelector('.uc-plot');
-    let W = Math.max(1, plot.getBoundingClientRect().width - 40);
+    let W = Math.max(1, plot.getBoundingClientRect().width - 96);
     if (W <= 0 || !isFinite(W)) W = 400;
 
     const buckets = data.buckets;
     const keys = data.keys || [];
     const visibleKeys = keys.filter(k => !chartState.hidden[chartState.split]?.includes(k.key));
+
+    // Compute cumulative data for visible keys only
+    const cumulative = computeCumulativeData(buckets, visibleKeys);
+    chartState.cumulativeData = cumulative;
+    const maxCumulative = Math.max(...cumulative, 1);
 
     const maxTotal = Math.max(...buckets.map(b => b.total), 1);
     const H = 200;
@@ -598,6 +619,38 @@ function renderChart(data, section) {
     }
 
     bars += hitRects + labelsSvg;
+
+    let cumulativeLine = '';
+    let cumulativeDots = '';
+    let cumulativeRightAxis = '';
+
+    // Build cumulative line and dots
+    for (let i = 0; i < N; i++) {
+        const cumY = PH - (cumulative[i] / maxCumulative) * PH;
+        const cumX = i * slot + slot / 2;
+        if (i === 0) {
+            cumulativeLine = `M ${cumX} ${cumY}`;
+        } else {
+            cumulativeLine += ` L ${cumX} ${cumY}`;
+        }
+        cumulativeDots += `<circle cx="${cumX}" cy="${cumY}" r="2" fill="white" opacity="0.7" class="uc-cumulative-dot"/>`;
+    }
+
+    // Right-side cumulative axis labels
+    const cumulativeTicks = [];
+    for (let i = 0; i <= tickCount; i++) {
+        cumulativeTicks.push((maxCumulative / tickCount) * i);
+    }
+    cumulativeRightAxis = `<g class="uc-cumulative-axis" font-size="11" fill="rgba(255,255,255,0.4)" text-anchor="start">`;
+    cumulativeTicks.forEach((tick) => {
+        const y = PH - (tick / maxCumulative) * PH;
+        cumulativeRightAxis += `<text x="${W + 4}" y="${y + 4}">${tick.toFixed(1)}</text>`;
+    });
+    cumulativeRightAxis += `</g>`;
+
+    bars += `<g class="uc-cumulative" stroke="white" stroke-width="1.5" fill="none" opacity="0.7"><path d="${cumulativeLine}"/></g>`;
+    bars += cumulativeDots;
+    bars += cumulativeRightAxis;
     // SVG viewBox and height: PH (200) for bars, +28 for label strip below
     svg.setAttribute('viewBox', `0 0 ${W} ${PH + 28}`);
     svg.setAttribute('height', PH + 28);
@@ -719,14 +772,17 @@ function updateTooltip(idx, data, section, fromClick = false) {
         .map(k => `<div style="font-size:11px; color:var(--oc-fg);">${escapeHtml(k.key)}: ${bucket.series[k.key].toFixed(2)} cr</div>`)
         .join('');
 
-    tip.innerHTML = `<div style="font-weight:500;">${timeStr}</div><div>${bucket.total.toFixed(2)} credits · ${bucket.count} requests</div>${keysHtml}`;
+    // Add cumulative if available
+    const cumulative = chartState.cumulativeData?.[idx];
+    const cumulativeHtml = cumulative !== undefined ? `<div style="font-size:11px; color:rgba(255,255,255,0.5);">Cumulative: ${cumulative.toFixed(2)} cr</div>` : '';
+
+    tip.innerHTML = `<div style="font-weight:500;">${timeStr}</div><div>${bucket.total.toFixed(2)} credits · ${bucket.count} requests</div>${keysHtml}${cumulativeHtml}`;
     tip.style.display = 'block';
 
-    // Position tooltip above bar
+    // Position tooltip: clamp vertically to stay within plot container
     const g = chartState.geom;
     if (g) {
-        const plot = section.querySelector('.uc-plot');
-        const plotRect = plot.getBoundingClientRect();
+        // Horizontal clamping (keep existing logic)
         const tipWidth = Math.min(tip.offsetWidth || 200, 200);
         const slotCenter = (idx + 0.5) * g.slot + 40;
         let left = slotCenter - tipWidth / 2;
@@ -738,6 +794,10 @@ function updateTooltip(idx, data, section, fromClick = false) {
             left = 40;
         }
         tip.style.left = left + 'px';
+
+        // .uc-plot clips overflow, so keep the tip inside it, pinned to the top
+        tip.style.bottom = 'auto';
+        tip.style.top = '4px';
     }
 
     // Only announce on click/keyboard, not on hover

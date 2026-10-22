@@ -454,6 +454,7 @@
             border-left: 1px solid var(--oc-border, #555);
             border-bottom: 1px solid var(--oc-border, #555);
             width: 100%;
+            margin-right: 48px;
             height: 200px;
             overflow: visible;
             touch-action: none;
@@ -486,7 +487,6 @@
         }
         .uc-tip {
             position: absolute;
-            bottom: 210px;
             background: var(--oc-bg, #1a1a1a);
             border: 1px solid var(--oc-border, #555);
             border-radius: var(--oc-radius, 4px);
@@ -496,7 +496,8 @@
             pointer-events: none;
             z-index: 100;
             max-width: 200px;
-            white-space: nowrap;
+            white-space: normal;
+            word-wrap: break-word;
         }
         .uc-live {
             display: none;
