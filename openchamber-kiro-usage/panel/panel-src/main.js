@@ -784,15 +784,12 @@ function updateTooltip(idx, data, section, fromClick = false) {
     if (g) {
         // Horizontal clamping (keep existing logic)
         const tipWidth = Math.min(tip.offsetWidth || 200, 200);
-        const slotCenter = (idx + 0.5) * g.slot + 40;
-        let left = slotCenter - tipWidth / 2;
-        const maxLeft = g.W + 40;
-        if (left + tipWidth > maxLeft) {
-            left = maxLeft - tipWidth;
-        }
-        if (left < 40) {
-            left = 40;
-        }
+        // Sit beside the hovered bar (right, else left) so it never covers it
+        const barLeft = idx * g.slot + 40;
+        const barRight = (idx + 1) * g.slot + 40;
+        let left = barRight + 8;
+        if (left + tipWidth > g.W + 40 + 48) left = barLeft - tipWidth - 8;
+        if (left < 40) left = 40;
         tip.style.left = left + 'px';
 
         // .uc-plot clips overflow, so keep the tip inside it, pinned to the top
