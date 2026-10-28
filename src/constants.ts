@@ -120,13 +120,7 @@ export const MODEL_MAPPING: Record<string, string> = {
   'minimax-m2.1-thinking': 'minimax-m2.1',
   'minimax-m2.1-thinking-272k': 'minimax-m2.1',
   'qwen3-coder-next-thinking': 'qwen3-coder-next',
-  'qwen3-coder-next-thinking-272k': 'qwen3-coder-next',
-  // Legacy / internal mappings kept for backwards compatibility
-  'claude-3-7-sonnet': 'CLAUDE_3_7_SONNET_20250219_V1_0',
-  'nova-swe': 'AGI_NOVA_SWE_V1_5',
-  'gpt-oss-120b': 'OPENAI_GPT_OSS_120B_1_0',
-  'minimax-m2': 'MINIMAX_MINIMAX_M2',
-  'kimi-k2-thinking': 'MOONSHOT_KIMI_K2_THINKING'
+  'qwen3-coder-next-thinking-272k': 'qwen3-coder-next'
 }
 
 export const SUPPORTED_MODELS = Object.keys(MODEL_MAPPING)
