@@ -1,8 +1,8 @@
-// Normalize model name: lowercase, '.' -> '-', strip suffixes (-thinking, -272k, -1m)
+// Normalize model name: lowercase, '.' -> '-', strip suffixes (-thinking, -272k, -100k, -1m), including stacked ones like -100k-thinking
 const normModel = (model) => {
   if (!model) return '';
   let norm = model.toLowerCase().replace(/\./g, '-');
-  norm = norm.replace(/-(thinking|272k|1m)$/i, '');
+  norm = norm.replace(/(-(thinking|272k|100k|1m))+$/i, '');
   return norm;
 };
 

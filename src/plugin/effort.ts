@@ -50,6 +50,7 @@ const XHIGH_CAPABLE_MODELS = new Set([
  * xhigh requests on these models are clamped to max.
  */
 const EFFORT_CAPABLE_MODELS = new Set([
+  'claude-haiku-5.5',
   'claude-opus-4.5',
   'claude-opus-4.6',
   'claude-opus-4.6-1m',

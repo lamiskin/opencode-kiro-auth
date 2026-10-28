@@ -1,5 +1,14 @@
 const { describe, it, expect, beforeEach, afterEach } = require('bun:test');
-const { buildIndex, resolve } = require('./agent-index');
+const { buildIndex, resolve, normModel } = require('./agent-index');
+
+describe('normModel', () => {
+  it('strips stacked context and thinking suffixes', () => {
+    expect(normModel('claude-haiku-5-5-100k-thinking')).toBe('claude-haiku-5-5');
+    expect(normModel('claude-haiku-5-5-100k')).toBe('claude-haiku-5-5');
+    expect(normModel('claude-haiku-5.5-thinking')).toBe('claude-haiku-5-5');
+    expect(normModel('gpt-5.6-sol-272k')).toBe('gpt-5-6-sol');
+  });
+});
 
 describe('Agent Index', () => {
   describe('buildIndex', () => {

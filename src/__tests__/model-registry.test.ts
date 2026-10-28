@@ -44,9 +44,11 @@ describe('model registry', () => {
   })
 
   test('advertises reasoning variants for each effort-capable model', () => {
-    // Claude models get -thinking companion entries
+    // Claude models and Kimi get -thinking companion entries
     // GPT-5.6 models have reasoning=true on base entry with no -thinking variants
     const expectedThinking = [
+      'claude-haiku-5-5-thinking',
+      'claude-haiku-5-5-100k-thinking',
       'claude-opus-4-5-thinking',
       'claude-opus-4-6-thinking',
       'claude-opus-4-7-thinking',

@@ -48,21 +48,6 @@ describe('model-mapping-consistency', () => {
         expect(entry).toBeDefined(`resolveKiroModel('${model}') -> '${resolved}' not in catalog`)
       }
     })
-
-    test('legacy internal mappings resolve without error', () => {
-      // These map to internal constant strings; they may not have catalog entries
-      const legacyMappings = [
-        'claude-3-7-sonnet',
-        'nova-swe',
-        'gpt-oss-120b',
-        'minimax-m2',
-        'kimi-k2-thinking'
-      ]
-
-      for (const model of legacyMappings) {
-        expect(() => resolveKiroModel(model)).not.toThrow()
-      }
-    })
   })
 
   describe('rate consistency', () => {

@@ -83,7 +83,8 @@ const BUNDLED_MODEL_CATALOG: ModelCatalogEntry[] = [
   // Claude Haiku
   { id: 'auto', name: 'Auto', rate: '1.0x', context: 200000 },
   { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', rate: '0.4x', context: 200000 },
-  { id: 'claude-haiku-4.5', name: 'Claude Haiku 4.5', rate: '0.4x', context: 200000 },
+  { id: 'claude-haiku-5-5', name: 'Claude Haiku 5.5', rate: '0.06x', context: 1000000 },
+  { id: 'claude-haiku-5-5-100k', name: 'Claude Haiku 5.5 100K', rate: '0.06x', context: 100000 },
 
   // Open-weight models
   { id: 'deepseek-3.2', name: 'DeepSeek 3.2', rate: '0.25x', context: 128000 },
@@ -104,10 +105,16 @@ const BUNDLED_MODEL_CATALOG: ModelCatalogEntry[] = [
     context: 200000
   },
   {
-    id: 'claude-sonnet-4-thinking',
-    name: 'Claude Sonnet 4.0 Thinking',
-    rate: '1.3x',
-    context: 200000
+    id: 'claude-haiku-5-5-thinking',
+    name: 'Claude Haiku 5.5 Thinking',
+    rate: '0.06x',
+    context: 1000000
+  },
+  {
+    id: 'claude-haiku-5-5-100k-thinking',
+    name: 'Claude Haiku 5.5 100K Thinking',
+    rate: '0.06x',
+    context: 100000
   },
   {
     id: 'claude-sonnet-4-5-thinking',
@@ -354,7 +361,7 @@ export function getModelCatalogEntry(modelId: string): ModelCatalogEntry | undef
 
 /**
  * Ids to try for a model: itself, its dot/hyphen spelling (claude-haiku-4.5 <-> claude-haiku-4-5),
- * then each with -thinking/-272k/-1m suffixes stripped (rate is the same as the base model).
+ * then each with -thinking/-272k/-100k/-1m suffixes stripped (rate is the same as the base model).
  * Kiro responses use dot ids while MODEL_MAPPING keys are hyphenated, so both must resolve.
  */
 export function rateLookupCandidates(modelId: string): string[] {
@@ -366,7 +373,7 @@ export function rateLookupCandidates(modelId: string): string[] {
   for (;;) {
     add(id)
     add(alias(id))
-    const stripped = id.replace(/-(thinking|272k|1m)$/, '')
+    const stripped = id.replace(/-(thinking|272k|100k|1m)$/, '')
     if (stripped === id) break
     id = stripped
   }
