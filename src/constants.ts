@@ -53,6 +53,10 @@ export const MODEL_MAPPING: Record<string, string> = {
   // Claude Haiku
   'claude-haiku-4-5': 'claude-haiku-4.5',
   'claude-haiku-4-5-thinking': 'claude-haiku-4.5',
+  'claude-haiku-5-5': 'claude-haiku-5.5',
+  'claude-haiku-5-5-thinking': 'claude-haiku-5.5',
+  'claude-haiku-5-5-100k': 'claude-haiku-5.5',
+  'claude-haiku-5-5-100k-thinking': 'claude-haiku-5.5',
   // Claude Sonnet
   'claude-sonnet-4': 'claude-sonnet-4',
   'claude-sonnet-4-5': 'claude-sonnet-4.5',

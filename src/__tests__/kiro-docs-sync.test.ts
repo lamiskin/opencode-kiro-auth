@@ -22,10 +22,12 @@ const KIRO_DOCS_MODELS = [
   { id: 'claude-sonnet-4', context: 200000, rate: '1.3x', hasThinking: false, isOpenAI: false },
   { id: 'claude-fable-5-1', context: 1000000, rate: '6x', hasThinking: true, isOpenAI: false },
   { id: 'claude-haiku-4-5', context: 200000, rate: '0.4x', hasThinking: false, isOpenAI: false },
+  // Two-tier pricing for Haiku 5.5: ≤100K at 0.06x, >100K at 0.3x. Rate shown is short-context tier.
+  { id: 'claude-haiku-5-5', context: 1000000, rate: '0.06x', hasThinking: true, isOpenAI: false },
   { id: 'deepseek-3.2', context: 128000, rate: '0.25x', hasThinking: false, isOpenAI: false },
-  { id: 'minimax-m2.5', context: 196000, rate: '0.25x', hasThinking: false, isOpenAI: false },
+  { id: 'minimax-m2.5', context: 200000, rate: '0.25x', hasThinking: false, isOpenAI: false },
   { id: 'glm-5', context: 200000, rate: '0.5x', hasThinking: false, isOpenAI: false },
-  { id: 'minimax-m2.1', context: 196000, rate: '0.15x', hasThinking: false, isOpenAI: false },
+  { id: 'minimax-m2.1', context: 200000, rate: '0.15x', hasThinking: false, isOpenAI: false },
   { id: 'qwen3-coder-next', context: 256000, rate: '0.05x', hasThinking: false, isOpenAI: false },
   { id: 'kimi-k3', context: 1000000, rate: '2.4x', hasThinking: true, isOpenAI: false },
   { id: 'auto', context: null, rate: '1.0x', hasThinking: false, isOpenAI: false }
@@ -37,7 +39,11 @@ describe('kiro.dev documentation sync', () => {
 
     const registryModelIDs = new Set(
       Object.keys(registry).filter(
-        (id) => !id.endsWith('-thinking') && !id.endsWith('-272k') && !id.includes('-1m')
+        (id) =>
+          !id.endsWith('-thinking') &&
+          !id.endsWith('-272k') &&
+          !id.endsWith('-100k') &&
+          !id.includes('-1m')
       )
     )
     const documentedIDs = new Set(KIRO_DOCS_MODELS.map((m) => m.id))
@@ -89,7 +95,7 @@ describe('kiro.dev documentation sync', () => {
       const regModel = registry[docModel.id]
       expect(regModel, `Model ${docModel.id} not found in registry`).toBeDefined()
 
-      const regRate = regModel.name.match(/\(([\d.]+x)\)/)?.[1]
+      const regRate = regModel.name.match(/\(([\d.]+x)/)?.[1]
       expect(
         regRate,
         `Rate mismatch for ${docModel.id}: expected ${docModel.rate}, name is ${regModel.name}`

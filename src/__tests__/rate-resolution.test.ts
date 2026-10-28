@@ -145,3 +145,26 @@ describe('Rate resolution: dot/hyphen and -thinking/-272k/-1m', () => {
     expect(cap272kRate).toBe(baseRate)
   })
 })
+
+import { effectiveRate, rateLabel } from '../plugin/model-rate.js'
+
+describe('two-tier pricing', () => {
+  it('GPT-5.6 doubles above 272K, base at or below', () => {
+    expect(effectiveRate('gpt-5.6-sol', 272000)).toBe('4.4x')
+    expect(effectiveRate('gpt-5.6-sol', 272001)).toBe('8.8x')
+    expect(effectiveRate('gpt-5.6-luna', 300000)).toBe('1.2x')
+  })
+  it('Haiku 5.5 is 0.3x above 100K', () => {
+    expect(effectiveRate('claude-haiku-5-5', 100000)).toBe('0.06x')
+    expect(effectiveRate('claude-haiku-5-5-thinking', 100001)).toBe('0.3x')
+  })
+  it('non-tiered models and missing tokens keep the base rate', () => {
+    expect(effectiveRate('claude-sonnet-5', 900000)).toBe('1.3x')
+    expect(effectiveRate('gpt-5.6-sol', undefined)).toBe('4.4x')
+  })
+  it('labels show both tiers on full-context entries only', () => {
+    expect(rateLabel('gpt-5.6-terra', '2.2x')).toBe('2.2x ≤272K, 4.4x >272K')
+    expect(rateLabel('claude-haiku-5-5', '0.06x')).toBe('0.06x ≤100K, 0.3x >100K')
+    expect(rateLabel('claude-opus-5', '2.2x')).toBe('2.2x')
+  })
+})

@@ -1,5 +1,6 @@
 import { EFFORT_LEVELS, supportsEffort, supportsXHighEffort, THINKING_BUDGETS } from './effort.js'
 import { getModelRate, initializeModelCatalog, refreshModelCatalog } from './model-catalog.js'
+import { rateLabel } from './model-rate.js'
 import { getAvailableModelsContext, resolveKiroModel } from './models.js'
 
 type Modalities = {
@@ -13,6 +14,7 @@ const MULTIMODAL: Modalities = { input: ['text', 'image', 'pdf'], output: ['text
 
 const CONTEXT_200K = { context: 200000, output: 64000 }
 const CONTEXT_1M = { context: 1000000, output: 64000 }
+const CONTEXT_100K = { context: 100000, output: 64000 }
 const CONTEXT_272K = { context: 272000, output: 128000 }
 const CONTEXT_128K = { context: 128000, output: 64000 }
 const CONTEXT_256K = { context: 256000, output: 64000 }
@@ -46,6 +48,11 @@ interface ModelCapabilities {
    * The -272k variant caps context at 272K to stay in the base pricing tier.
    */
   capped272k?: boolean
+  /**
+   * Emit a companion `-100k` entry for Haiku 5.5 with two-tier pricing.
+   * The -100k variant caps context at 100K to stay in the base pricing tier (0.06x).
+   */
+  capped100k?: boolean
 }
 
 /**
@@ -109,6 +116,13 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     name: 'Claude Haiku 4.5',
     limit: CONTEXT_200K,
     modalities: TEXT_IMAGE
+  },
+  'claude-haiku-5-5': {
+    name: 'Claude Haiku 5.5',
+    limit: CONTEXT_1M,
+    modalities: TEXT_IMAGE,
+    thinking: true,
+    capped100k: true
   },
 
   // Claude Opus
@@ -175,12 +189,12 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
   },
   'minimax-m2.5': {
     name: 'MiniMax M2.5',
-    limit: { context: 196000, output: 64000 },
+    limit: { context: 200000, output: 64000 },
     modalities: TEXT_ONLY
   },
   'minimax-m2.1': {
     name: 'MiniMax M2.1',
-    limit: { context: 196000, output: 64000 },
+    limit: { context: 200000, output: 64000 },
     modalities: TEXT_ONLY
   },
   'qwen3-coder-next': {
@@ -272,7 +286,7 @@ export function buildModelRegistry(): Record<string, unknown> {
     const limit = { ...caps.limit, context: contextWindow }
 
     models[modelID] = {
-      name: `${caps.name} (${rate})`,
+      name: `${caps.name} (${rateLabel(modelID, rate)})`,
       limit,
       modalities: caps.modalities
     }
@@ -281,7 +295,7 @@ export function buildModelRegistry(): Record<string, unknown> {
       const kiroModel = resolveKiroModel(modelID)
       const variants = buildVariants(kiroModel, true)
       models[modelID] = {
-        name: `${caps.name} (${rate})`,
+        name: `${caps.name} (${rateLabel(modelID, rate)})`,
         limit,
         modalities: caps.modalities,
         reasoning: true,
@@ -300,6 +314,7 @@ export function buildModelRegistry(): Record<string, unknown> {
           variants
         }
       }
+
       continue
     }
 
@@ -316,12 +331,32 @@ export function buildModelRegistry(): Record<string, unknown> {
     const thinkingLimit = { ...caps.limit, context: thinkingContextWindow }
 
     models[`${modelID}-thinking`] = {
-      name: `${caps.name} Thinking (${rate})`,
+      name: `${caps.name} Thinking (${rateLabel(modelID, rate)})`,
       limit: thinkingLimit,
       modalities: caps.modalities,
       reasoning: true,
       interleaved: { field: 'reasoning_content' },
       variants: buildVariants(kiroModel)
+    }
+
+    // Two-tier companion (Haiku 5.5): -100k base and -100k-thinking capped at 100K
+    if (caps.capped100k) {
+      models[`${modelID}-100k`] = {
+        name: `${caps.name} 100K (${rate})`,
+        limit: CONTEXT_100K,
+        modalities: caps.modalities,
+        reasoning: true,
+        interleaved: { field: 'reasoning_content' },
+        variants: buildVariants(kiroModel)
+      }
+      models[`${modelID}-100k-thinking`] = {
+        name: `${caps.name} 100K Thinking (${rate})`,
+        limit: CONTEXT_100K,
+        modalities: caps.modalities,
+        reasoning: true,
+        interleaved: { field: 'reasoning_content' },
+        variants: buildVariants(kiroModel)
+      }
     }
   }
 

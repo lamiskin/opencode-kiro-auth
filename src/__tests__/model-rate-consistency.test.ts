@@ -30,7 +30,7 @@ const LOGGED_IDS = [
 // Ids that are legitimately 1.0x. Anything else resolving to 1.0x is a missing-rate bug.
 const EXPLICIT_1X = new Set(['auto'])
 
-const rateOfName = (name: string) => /\(([\d.]+x)\)$/.exec(name)?.[1]
+const rateOfName = (name: string) => /\(([\d.]+x)[^)]*\)$/.exec(name)?.[1]
 
 describe('model rate consistency', () => {
   beforeEach(() => {

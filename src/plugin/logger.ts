@@ -13,7 +13,7 @@ import {
 } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { rateForLog } from './model-rate.js'
+import { effectiveRate } from './model-rate.js'
 import { estimateTokens as responseEstimateTokens } from './response.js'
 
 const binaryToBase64Replacer = (_key: string, value: unknown): unknown => {
@@ -247,7 +247,7 @@ export function logApiUsage(usage: ApiUsage, timestamp: string): void {
     let rate = '1.0x'
     const model = existingData?.model
     if (model) {
-      rate = rateForLog(model, warn)
+      rate = effectiveRate(model, usage.inputTokens, warn)
     }
 
     // Merge usage data
