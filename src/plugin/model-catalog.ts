@@ -20,6 +20,8 @@ export interface ModelCatalogEntry {
   rate: string
   /** Context window size */
   context: number
+  /** Two-tier pricing: requests above `threshold` tokens bill at `rate` instead of the base rate */
+  longContext?: { threshold: number; rate: string }
 }
 
 type CatalogCacheEntry = {
@@ -33,7 +35,7 @@ let activeCatalog = new Map<string, ModelCatalogEntry>()
 
 /**
  * Bundled fallback data extracted from kiro.dev/docs/models.md
- * Last updated: September 2026
+ * Last updated: October 2026
  * This serves as a fallback when the remote fetch fails.
  *
  * Includes both hyphenated and dot-notation variants to handle all model ID formats.
@@ -41,11 +43,29 @@ let activeCatalog = new Map<string, ModelCatalogEntry>()
 const BUNDLED_MODEL_CATALOG: ModelCatalogEntry[] = [
   // GPT-5.6 uses two-tier pricing: short-context (≤272K) and long-context (>272K)
   // The rates shown are for short-context. Long-context is 2x these rates.
-  { id: 'gpt-5.6-sol', name: 'GPT-5.6 Sol', rate: '4.4x', context: 1000000 },
+  {
+    id: 'gpt-5.6-sol',
+    name: 'GPT-5.6 Sol',
+    rate: '4.4x',
+    context: 1000000,
+    longContext: { threshold: 272000, rate: '8.8x' }
+  },
   { id: 'gpt-5.6-sol-272k', name: 'GPT-5.6 Sol 272K', rate: '4.4x', context: 272000 },
-  { id: 'gpt-5.6-terra', name: 'GPT-5.6 Terra', rate: '2.2x', context: 1000000 },
+  {
+    id: 'gpt-5.6-terra',
+    name: 'GPT-5.6 Terra',
+    rate: '2.2x',
+    context: 1000000,
+    longContext: { threshold: 272000, rate: '4.4x' }
+  },
   { id: 'gpt-5.6-terra-272k', name: 'GPT-5.6 Terra 272K', rate: '2.2x', context: 272000 },
-  { id: 'gpt-5.6-luna', name: 'GPT-5.6 Luna', rate: '0.6x', context: 1000000 },
+  {
+    id: 'gpt-5.6-luna',
+    name: 'GPT-5.6 Luna',
+    rate: '0.6x',
+    context: 1000000,
+    longContext: { threshold: 272000, rate: '1.2x' }
+  },
   { id: 'gpt-5.6-luna-272k', name: 'GPT-5.6 Luna 272K', rate: '0.6x', context: 272000 },
 
   // Claude Opus
@@ -83,7 +103,13 @@ const BUNDLED_MODEL_CATALOG: ModelCatalogEntry[] = [
   // Claude Haiku
   { id: 'auto', name: 'Auto', rate: '1.0x', context: 200000 },
   { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', rate: '0.4x', context: 200000 },
-  { id: 'claude-haiku-5-5', name: 'Claude Haiku 5.5', rate: '0.06x', context: 1000000 },
+  {
+    id: 'claude-haiku-5-5',
+    name: 'Claude Haiku 5.5',
+    rate: '0.06x',
+    context: 1000000,
+    longContext: { threshold: 100000, rate: '0.3x' }
+  },
   { id: 'claude-haiku-5-5-100k', name: 'Claude Haiku 5.5 100K', rate: '0.06x', context: 100000 },
 
   // Open-weight models
@@ -276,11 +302,15 @@ export function parseModelsMarkdown(markdown: string): Map<string, ModelCatalogE
     // Convert display name to model ID
     const id = modelNameToId(modelName)
 
+    // Table has no tier info, so carry two-tier pricing over from bundled data
+    const longContext = BUNDLED_MODEL_CATALOG.find((e) => e.id === id)?.longContext
+
     catalog.set(id, {
       id,
       name: modelName,
       rate,
-      context
+      context,
+      ...(longContext ? { longContext } : {})
     })
   }
 
@@ -386,6 +416,15 @@ export function rateLookupCandidates(modelId: string): string[] {
  */
 export function getModelRate(modelId: string): string {
   return getModelCatalogEntry(modelId)?.rate ?? '1.0x'
+}
+
+/**
+ * Get the above-threshold (long-context) pricing tier for a model, if it has one.
+ */
+export function getModelLongContext(
+  modelId: string
+): { threshold: number; rate: string } | undefined {
+  return getModelCatalogEntry(modelId)?.longContext
 }
 
 /**
