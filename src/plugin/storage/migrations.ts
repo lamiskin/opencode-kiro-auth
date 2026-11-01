@@ -12,16 +12,18 @@ export function runMigrations(db: Database): void {
 }
 
 function migrateToUniqueRefreshToken(db: Database): void {
-  const hasIndex = db
-    .prepare(
-      "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_refresh_token_unique'"
-    )
-    .get()
-
-  if (hasIndex) return
-
   db.exec('BEGIN IMMEDIATE')
   try {
+    const hasIndex = db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_refresh_token_unique'"
+      )
+      .get()
+    if (hasIndex) {
+      db.exec('COMMIT')
+      return
+    }
+
     const duplicates = db
       .prepare(
         `
