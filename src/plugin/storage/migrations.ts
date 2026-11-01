@@ -20,7 +20,7 @@ function migrateToUniqueRefreshToken(db: Database): void {
 
   if (hasIndex) return
 
-  db.exec('BEGIN TRANSACTION')
+  db.exec('BEGIN IMMEDIATE')
   try {
     const duplicates = db
       .prepare(
@@ -78,7 +78,7 @@ function migrateRealEmailColumn(db: Database): void {
   const columns = db.prepare('PRAGMA table_info(accounts)').all() as any[]
   const names = new Set(columns.map((c) => c.name))
   if (names.has('real_email')) {
-    db.exec('BEGIN TRANSACTION')
+    db.exec('BEGIN IMMEDIATE')
     try {
       db.exec(
         "UPDATE accounts SET email = real_email WHERE real_email IS NOT NULL AND real_email != '' AND email LIKE 'builder-id@aws.amazon.com%'"

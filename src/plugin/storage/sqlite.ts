@@ -20,6 +20,8 @@ export class KiroDatabase {
   private db: Libsql.Database
   private path: string
 
+  // BEGIN IMMEDIATE on writes and migrations: concurrent opens wait on busy_timeout
+  // instead of failing with SQLITE_BUSY. Ported from hppsc1215/opencode-kiro-auth (d00bf4a).
   constructor(path: string = DB_PATH) {
     this.path = path
     const dir = join(path, '..')
@@ -100,7 +102,7 @@ export class KiroDatabase {
       const merged = mergeAccounts(existing, [acc])
       const deduplicated = deduplicateAccounts(merged)
 
-      this.db.exec('BEGIN TRANSACTION')
+      this.db.exec('BEGIN IMMEDIATE')
       try {
         for (const account of deduplicated) {
           this.upsertAccountInternal(account)
@@ -119,7 +121,7 @@ export class KiroDatabase {
       const merged = mergeAccounts(existing, accounts)
       const deduplicated = deduplicateAccounts(merged)
 
-      this.db.exec('BEGIN TRANSACTION')
+      this.db.exec('BEGIN IMMEDIATE')
       try {
         for (const account of deduplicated) {
           this.upsertAccountInternal(account)
@@ -144,7 +146,7 @@ export class KiroDatabase {
     await withDatabaseLock(this.path, async () => {
       const now = Date.now()
 
-      this.db.exec('BEGIN TRANSACTION')
+      this.db.exec('BEGIN IMMEDIATE')
       try {
         const stmt = this.db.prepare(
           `
