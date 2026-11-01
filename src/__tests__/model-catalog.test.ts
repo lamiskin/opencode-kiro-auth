@@ -7,7 +7,8 @@ import {
   getModelLongContext,
   getModelRate,
   initializeModelCatalog,
-  parseModelsMarkdown
+  parseModelsMarkdown,
+  refreshModelCatalog
 } from '../plugin/model-catalog.js'
 
 describe('model-catalog', () => {
@@ -133,6 +134,17 @@ Some text without a table.
       expect(catalog.get('gpt-5.6-terra')?.rate).toBe('2.2x')
     })
 
+    test('maps "Claude Sonnet 4.0" to the claude-sonnet-4 id', () => {
+      const markdown = `
+| Model | Context | Cost |
+|-------|:-------:|:----:|
+| **Claude Sonnet 4.0** | 200K | 1.3x |
+`
+      const catalog = parseModelsMarkdown(markdown)
+
+      expect(catalog.get('claude-sonnet-4')?.rate).toBe('1.3x')
+    })
+
     test('keeps bundled long-context tier for rows parsed from the table', () => {
       const markdown = `
 | Model | Context | Cost |
@@ -142,6 +154,27 @@ Some text without a table.
       const catalog = parseModelsMarkdown(markdown)
 
       expect(catalog.get('gpt-5.6-sol')?.longContext).toEqual({ threshold: 272000, rate: '8.8x' })
+    })
+  })
+
+  describe('live catalog precedence', () => {
+    test('live fetched rate overrides bundled hyphen entry', async () => {
+      const originalFetch = globalThis.fetch
+      const markdown = `
+| Model | Context | Cost |
+|-------|:-------:|:----:|
+| **Claude Haiku 5.5** | 1M | 0.07x |
+`
+      globalThis.fetch = (async () => ({
+        ok: true,
+        text: async () => markdown
+      })) as unknown as typeof fetch
+      try {
+        await refreshModelCatalog()
+        expect(getModelRate('claude-haiku-5-5')).toBe('0.07x')
+      } finally {
+        globalThis.fetch = originalFetch
+      }
     })
   })
 

@@ -77,23 +77,16 @@ const BUNDLED_MODEL_CATALOG: ModelCatalogEntry[] = [
   { id: 'claude-opus-4.7', name: 'Claude Opus 4.7', rate: '2.2x', context: 1000000 },
   { id: 'claude-opus-4-6', name: 'Claude Opus 4.6', rate: '2.2x', context: 1000000 },
   { id: 'claude-opus-4.6', name: 'Claude Opus 4.6', rate: '2.2x', context: 1000000 },
-  { id: 'claude-opus-4.6-1m', name: 'Claude Opus 4.6 1M', rate: '2.2x', context: 1000000 },
-  { id: 'claude-opus-4-6-1m', name: 'Claude Opus 4.6 1M', rate: '2.2x', context: 1000000 },
   { id: 'claude-opus-4-5', name: 'Claude Opus 4.5', rate: '2.2x', context: 200000 },
   { id: 'claude-opus-4.5', name: 'Claude Opus 4.5', rate: '2.2x', context: 200000 },
 
   // Claude Sonnet
   { id: 'claude-sonnet-5', name: 'Claude Sonnet 5', rate: '1.3x', context: 1000000 },
   { id: 'claude-sonnet-5.5', name: 'Claude Sonnet 5.5', rate: '1.3x', context: 1000000 },
-  { id: 'claude-sonnet-5-1m', name: 'Claude Sonnet 5 1M', rate: '1.3x', context: 1000000 },
   { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', rate: '1.3x', context: 1000000 },
   { id: 'claude-sonnet-4.6', name: 'Claude Sonnet 4.6', rate: '1.3x', context: 1000000 },
-  { id: 'claude-sonnet-4.6-1m', name: 'Claude Sonnet 4.6 1M', rate: '1.3x', context: 1000000 },
-  { id: 'claude-sonnet-4-6-1m', name: 'Claude Sonnet 4.6 1M', rate: '1.3x', context: 1000000 },
   { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5', rate: '1.3x', context: 200000 },
   { id: 'claude-sonnet-4.5', name: 'Claude Sonnet 4.5', rate: '1.3x', context: 200000 },
-  { id: 'claude-sonnet-4.5-1m', name: 'Claude Sonnet 4.5 1M', rate: '1.3x', context: 1000000 },
-  { id: 'claude-sonnet-4-5-1m', name: 'Claude Sonnet 4.5 1M', rate: '1.3x', context: 1000000 },
   { id: 'claude-sonnet-4', name: 'Claude Sonnet 4.0', rate: '1.3x', context: 200000 },
 
   // Claude Fable
@@ -328,6 +321,7 @@ function modelNameToId(name: string): string {
     .replace(/\s+/g, '-')
     .replace(/[^a-z0-9.-]/g, '')
     .replace(/-+/g, '-')
+    .replace(/\.0(?=-|$)/, '') // "claude-sonnet-4.0" -> "claude-sonnet-4"
 }
 
 /**
@@ -374,16 +368,21 @@ export async function refreshModelCatalog(): Promise<void> {
  * Falls back to bundled data if not in active catalog.
  */
 export function getModelCatalogEntry(modelId: string): ModelCatalogEntry | undefined {
-  for (const id of rateLookupCandidates(modelId)) {
-    const entry = activeCatalog.get(id) ?? BUNDLED_MODEL_CATALOG.find((e) => e.id === id)
-    if (entry) return entry
-    try {
-      const resolved = resolveKiroModel(id)
-      const mapped =
-        activeCatalog.get(resolved) ?? BUNDLED_MODEL_CATALOG.find((e) => e.id === resolved)
-      if (mapped) return mapped
-    } catch {
-      // Model not in mapping
+  const candidates = rateLookupCandidates(modelId)
+  // Live data wins: search every candidate in the active catalog before bundled data
+  for (const lookup of [
+    (id: string) => activeCatalog.get(id),
+    (id: string) => BUNDLED_MODEL_CATALOG.find((e) => e.id === id)
+  ]) {
+    for (const id of candidates) {
+      const entry = lookup(id)
+      if (entry) return entry
+      try {
+        const mapped = lookup(resolveKiroModel(id))
+        if (mapped) return mapped
+      } catch {
+        // Model not in mapping
+      }
     }
   }
   return undefined

@@ -38,7 +38,6 @@ const XHIGH_CAPABLE_MODELS = new Set([
   'claude-opus-5.5',
   'claude-sonnet-5',
   'claude-sonnet-5.5',
-  'claude-sonnet-5-1m',
   'claude-fable-5.1',
   'gpt-5.6-sol',
   'gpt-5.6-terra',
@@ -53,11 +52,8 @@ const EFFORT_CAPABLE_MODELS = new Set([
   'claude-haiku-5.5',
   'claude-opus-4.5',
   'claude-opus-4.6',
-  'claude-opus-4.6-1m',
   'claude-sonnet-4.5',
-  'claude-sonnet-4.5-1m',
   'claude-sonnet-4.6',
-  'claude-sonnet-4.6-1m',
   'kimi-k3',
   ...XHIGH_CAPABLE_MODELS
 ])

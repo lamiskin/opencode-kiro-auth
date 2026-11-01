@@ -3,21 +3,7 @@ import { isLongContextModel } from '../constants.js'
 import { getAvailableModelsContext, getContextWindowSize } from '../plugin/models.js'
 
 describe('context window resolution', () => {
-  describe('isLongContextModel: base vs explicit -1m distinction', () => {
-    test('returns true for explicit -1m variant IDs', () => {
-      const explicit1m = [
-        'claude-opus-4-6-1m',
-        'claude-opus-4-6-1m-thinking',
-        'claude-sonnet-4-5-1m',
-        'claude-sonnet-4-5-1m-thinking',
-        'claude-sonnet-5-1m',
-        'claude-sonnet-5-1m-thinking'
-      ]
-      for (const model of explicit1m) {
-        expect(isLongContextModel(model), `${model} should be long context`).toBe(true)
-      }
-    })
-
+  describe('isLongContextModel: base 1M vs 200K', () => {
     test('returns true for base Claude IDs with 1M context (not -1m suffixed)', () => {
       const base1m = [
         'claude-opus-4-6',
@@ -97,12 +83,6 @@ describe('context window resolution', () => {
       expect(getContextWindowSize('claude-opus-4-5')).toBe(200000)
       expect(getContextWindowSize('claude-sonnet-4-5')).toBe(200000)
       expect(getContextWindowSize('claude-haiku-4-5')).toBe(200000)
-    })
-
-    test('explicit -1m variants advertise 1M context', () => {
-      expect(getContextWindowSize('claude-opus-4-6-1m')).toBe(1000000)
-      expect(getContextWindowSize('claude-sonnet-4-5-1m')).toBe(1000000)
-      expect(getContextWindowSize('claude-sonnet-5-1m')).toBe(1000000)
     })
 
     test('returns 200K default for unknown models', () => {
