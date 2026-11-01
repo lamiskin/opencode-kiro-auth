@@ -61,25 +61,17 @@ export const MODEL_MAPPING: Record<string, string> = {
   'claude-sonnet-4': 'claude-sonnet-4',
   'claude-sonnet-4-5': 'claude-sonnet-4.5',
   'claude-sonnet-4-5-thinking': 'claude-sonnet-4.5',
-  'claude-sonnet-4-5-1m': 'claude-sonnet-4.5-1m',
-  'claude-sonnet-4-5-1m-thinking': 'claude-sonnet-4.5-1m',
   'claude-sonnet-4-6': 'claude-sonnet-4.6',
   'claude-sonnet-4-6-thinking': 'claude-sonnet-4.6',
-  'claude-sonnet-4-6-1m': 'claude-sonnet-4.6-1m',
-  'claude-sonnet-4-6-1m-thinking': 'claude-sonnet-4.6-1m',
   'claude-sonnet-5': 'claude-sonnet-5',
   'claude-sonnet-5-thinking': 'claude-sonnet-5',
   'claude-sonnet-5-5': 'claude-sonnet-5.5',
   'claude-sonnet-5-5-thinking': 'claude-sonnet-5.5',
-  'claude-sonnet-5-1m': 'claude-sonnet-5-1m',
-  'claude-sonnet-5-1m-thinking': 'claude-sonnet-5-1m',
   // Claude Opus
   'claude-opus-4-5': 'claude-opus-4.5',
   'claude-opus-4-5-thinking': 'claude-opus-4.5',
   'claude-opus-4-6': 'claude-opus-4.6',
   'claude-opus-4-6-thinking': 'claude-opus-4.6',
-  'claude-opus-4-6-1m': 'claude-opus-4.6-1m',
-  'claude-opus-4-6-1m-thinking': 'claude-opus-4.6-1m',
   'claude-opus-4-7': 'claude-opus-4.7',
   'claude-opus-4-7-thinking': 'claude-opus-4.7',
   'claude-opus-4-8': 'claude-opus-4.8',
@@ -125,7 +117,7 @@ export const MODEL_MAPPING: Record<string, string> = {
 
 export const SUPPORTED_MODELS = Object.keys(MODEL_MAPPING)
 
-/** Explicit -1m variant IDs (e.g., claude-sonnet-5-1m) */
+/** Explicit -1m variant IDs (none bundled; e.g., a future claude-sonnet-6-1m) */
 const EXPLICIT_1M_IDS = new Set(Object.keys(MODEL_MAPPING).filter((k) => k.includes('-1m')))
 
 /**

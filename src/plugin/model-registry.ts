@@ -80,18 +80,6 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     modalities: MULTIMODAL,
     thinking: true
   },
-  'claude-sonnet-4-5-1m': {
-    name: 'Claude Sonnet 4.5 1M',
-    limit: CONTEXT_1M,
-    modalities: MULTIMODAL,
-    thinking: true
-  },
-  'claude-sonnet-4-6-1m': {
-    name: 'Claude Sonnet 4.6 1M',
-    limit: CONTEXT_1M,
-    modalities: MULTIMODAL,
-    thinking: true
-  },
   'claude-sonnet-5': {
     name: 'Claude Sonnet 5',
     limit: CONTEXT_1M,
@@ -100,12 +88,6 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
   },
   'claude-sonnet-5-5': {
     name: 'Claude Sonnet 5.5',
-    limit: CONTEXT_1M,
-    modalities: MULTIMODAL,
-    thinking: true
-  },
-  'claude-sonnet-5-1m': {
-    name: 'Claude Sonnet 5 1M',
     limit: CONTEXT_1M,
     modalities: MULTIMODAL,
     thinking: true
@@ -134,12 +116,6 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
   },
   'claude-opus-4-6': {
     name: 'Claude Opus 4.6',
-    limit: CONTEXT_1M,
-    modalities: MULTIMODAL,
-    thinking: true
-  },
-  'claude-opus-4-6-1m': {
-    name: 'Claude Opus 4.6 1M',
     limit: CONTEXT_1M,
     modalities: MULTIMODAL,
     thinking: true

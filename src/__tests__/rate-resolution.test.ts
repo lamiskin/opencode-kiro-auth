@@ -42,10 +42,8 @@ describe('Rate resolution: dot/hyphen and -thinking/-272k/-1m', () => {
     expect(candidates).toContain('gpt-5-6-sol')
   })
 
-  it('rateLookupCandidates strips -1m suffix and generates variants', () => {
-    const candidates = rateLookupCandidates('claude-sonnet-4-5-1m')
-    expect(candidates).toContain('claude-sonnet-4-5-1m')
-    expect(candidates).toContain('claude-sonnet-4.5-1m')
+  it('rateLookupCandidates generates dot and hyphen variants', () => {
+    const candidates = rateLookupCandidates('claude-sonnet-4-5')
     expect(candidates).toContain('claude-sonnet-4-5')
     expect(candidates).toContain('claude-sonnet-4.5')
   })
@@ -79,15 +77,6 @@ describe('Rate resolution: dot/hyphen and -thinking/-272k/-1m', () => {
     expect(entryBase).toBeDefined()
     // Both should resolve, though -272k has its own entry in BUNDLED_MODEL_CATALOG
     expect(entry272k?.rate).toBe('4.4x')
-  })
-
-  it('getModelCatalogEntry resolves -1m variant to base rate', () => {
-    const entry1m = getModelCatalogEntry('claude-sonnet-4-5-1m')
-    const entryBase = getModelCatalogEntry('claude-sonnet-4-5')
-    expect(entry1m).toBeDefined()
-    expect(entryBase).toBeDefined()
-    // Both should resolve to the same rate
-    expect(entry1m?.rate).toBe(entryBase?.rate)
   })
 
   it('rateForLog returns rate for known model', () => {

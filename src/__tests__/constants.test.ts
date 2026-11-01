@@ -1,15 +1,7 @@
 import { describe, expect, test } from 'bun:test'
-import { isLongContextModel, normalizeRegion, SUPPORTED_MODELS } from '../constants.js'
+import { isLongContextModel, normalizeRegion } from '../constants.js'
 
 describe('isLongContextModel', () => {
-  test('returns true for all 1m model variants (explicit -1m suffix)', () => {
-    const explicit1m = SUPPORTED_MODELS.filter((k) => k.includes('-1m'))
-    expect(explicit1m.length).toBeGreaterThan(0)
-    for (const model of explicit1m) {
-      expect(isLongContextModel(model)).toBe(true)
-    }
-  })
-
   test('returns true for base Claude models with 1M context (not -1m suffixed)', () => {
     const base1mClaude = [
       'claude-opus-4-6',
