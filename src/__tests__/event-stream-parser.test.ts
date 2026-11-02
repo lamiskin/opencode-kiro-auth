@@ -81,17 +81,17 @@ describe('parseAwsEventStreamBuffer: multiple events', () => {
     const buffer = '{"content":"a"}{"content":"b"}{"content":"c"}'
     const events = parseAwsEventStreamBuffer(buffer)
     expect(events).toHaveLength(3)
-    expect(events[0].data).toBe('a')
-    expect(events[1].data).toBe('b')
-    expect(events[2].data).toBe('c')
+    expect(events[0]!.data).toBe('a')
+    expect(events[1]!.data).toBe('b')
+    expect(events[2]!.data).toBe('c')
   })
 
   test('mixed event types concatenated', () => {
     const buffer = '{"content":"hello"}{"stop":true}'
     const events = parseAwsEventStreamBuffer(buffer)
     expect(events).toHaveLength(2)
-    expect(events[0].type).toBe('content')
-    expect(events[1].type).toBe('toolUseStop')
+    expect(events[0]!.type).toBe('content')
+    expect(events[1]!.type).toBe('toolUseStop')
   })
 
   test('whitespace between events', () => {
@@ -132,8 +132,8 @@ describe('parseAwsEventStreamBuffer: chunk boundary handling', () => {
     const events = parseAwsEventStreamBuffer(buffer)
     // Should parse the complete events, drop the incomplete one
     expect(events).toHaveLength(2)
-    expect(events[0].data).toBe('first')
-    expect(events[1].data).toBe('second')
+    expect(events[0]!.data).toBe('first')
+    expect(events[1]!.data).toBe('second')
   })
 })
 
@@ -144,14 +144,14 @@ describe('parseAwsEventStreamBuffer: escaped strings', () => {
     const buffer = '{"content":"say \\"hello\\""}'
     const events = parseAwsEventStreamBuffer(buffer)
     expect(events).toHaveLength(1)
-    expect(events[0].data).toBe('say "hello"')
+    expect(events[0]!.data).toBe('say "hello"')
   })
 
   test('escaped backslashes before quotes', () => {
     const buffer = '{"content":"path\\\\\\\\ end"}'
     const events = parseAwsEventStreamBuffer(buffer)
     expect(events).toHaveLength(1)
-    expect(events[0].data).toBe('path\\\\ end')
+    expect(events[0]!.data).toBe('path\\\\ end')
   })
 
   test('multiple escaped characters in sequence', () => {
@@ -180,21 +180,21 @@ describe('parseAwsEventStreamBuffer: nested braces', () => {
     const buffer = '{"content":{"nested":{"deep":"value"}}}'
     const events = parseAwsEventStreamBuffer(buffer)
     expect(events).toHaveLength(1)
-    expect(events[0].data).toEqual({ nested: { deep: 'value' } })
+    expect(events[0]!.data).toEqual({ nested: { deep: 'value' } })
   })
 
   test('nested arrays with objects', () => {
     const buffer = '{"input":[{"a":1},{"b":2}]}'
     const events = parseAwsEventStreamBuffer(buffer)
     expect(events).toHaveLength(1)
-    expect(events[0].data).toEqual({ input: [{ a: 1 }, { b: 2 }] })
+    expect(events[0]!.data).toEqual({ input: [{ a: 1 }, { b: 2 }] })
   })
 
   test('deeply nested structure', () => {
     const buffer = '{"content":{"a":{"b":{"c":{"d":"e"}}}}}'
     const events = parseAwsEventStreamBuffer(buffer)
     expect(events).toHaveLength(1)
-    expect(events[0].data.a.b.c.d).toBe('e')
+    expect(events[0]!.data.a.b.c.d).toBe('e')
   })
 
   test('mixed nested content with multiple events', () => {
@@ -212,7 +212,7 @@ describe('parseAwsEventStreamBuffer: malformed input', () => {
     const events = parseAwsEventStreamBuffer(buffer)
     // Only complete event is parsed
     expect(events).toHaveLength(1)
-    expect(events[0].data).toBe('hello')
+    expect(events[0]!.data).toBe('hello')
   })
 
   test('invalid JSON that cannot parse is dropped silently', () => {
@@ -220,8 +220,8 @@ describe('parseAwsEventStreamBuffer: malformed input', () => {
     const events = parseAwsEventStreamBuffer(buffer)
     // Invalid JSON is silently dropped
     expect(events).toHaveLength(2)
-    expect(events[0].data).toBe('hello')
-    expect(events[1].data).toBe('world')
+    expect(events[0]!.data).toBe('hello')
+    expect(events[1]!.data).toBe('world')
   })
 
   test('completely malformed buffer returns empty array', () => {
@@ -276,6 +276,6 @@ describe('parseAwsEventStreamBuffer: followupPrompt edge case', () => {
     const buffer = '{"content":"hello"}'
     const events = parseAwsEventStreamBuffer(buffer)
     expect(events).toHaveLength(1)
-    expect(events[0].type).toBe('content')
+    expect(events[0]!.type).toBe('content')
   })
 })

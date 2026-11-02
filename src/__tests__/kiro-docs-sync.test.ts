@@ -46,7 +46,7 @@ describe('kiro.dev documentation sync', () => {
           !id.includes('-1m')
       )
     )
-    const documentedIDs = new Set(KIRO_DOCS_MODELS.map((m) => m.id))
+    const documentedIDs = new Set<string>(KIRO_DOCS_MODELS.map((m) => m.id))
 
     const missingFromRegistry: string[] = []
     const extraInRegistry: string[] = []

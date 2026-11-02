@@ -34,10 +34,7 @@ mock.module('../plugin/logger.js', () => ({
   initializeLogs: () => {},
   logShape: () => {},
   computeHistoryShape: () => [],
-  computeHistoryHashes: () => [],
-  warn: (msg: any, ctx?: any) => {
-    warnCalls.push({ msg, ctx })
-  }
+  computeHistoryHashes: () => []
 }))
 
 import { kiroSetup } from '../adapters/v2.js'
