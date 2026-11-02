@@ -10,8 +10,15 @@ mock.module('../kiro/auth.js', () => ({
   accessTokenExpired: () => false
 }))
 
-import { AuthHandler } from '../core/auth/auth-handler.js'
 import type { KiroAuthDetails, ManagedAccount } from '../plugin/types.js'
+
+// usage.test.ts mocks '../plugin/usage.js' process-wide (bun's mock.module is global).
+// Re-mock it here with the real exports, loaded via a cache-busting specifier, so a
+// leaked stub from another file cannot reach this file's AuthHandler.
+const realUsageModule = '../plugin/usage.js?real' // variable so tsc does not resolve the query suffix
+const realUsage = await import(realUsageModule)
+mock.module('../plugin/usage.js', () => ({ ...realUsage }))
+const { AuthHandler } = await import('../core/auth/auth-handler.js')
 
 function makeAccount(overrides: Partial<ManagedAccount> = {}): ManagedAccount {
   return {
