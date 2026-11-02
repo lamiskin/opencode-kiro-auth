@@ -33,7 +33,7 @@ Data in:
 Key calls, in order:
 1. Content event: `buffer += text`, then the tag loop runs `findRealTag(buffer, THINKING_START_TAG)` and `findRealTag(buffer, THINKING_END_TAG)`. It builds deltas with `createTextDeltaEvents` and `createThinkingDeltaEvents`.
 2. Tool events: `restoreToolName(name, toolNameMap)` from `infrastructure/transformers/tool-transformer.js` maps names back. Fragments are merged by `toolUseId`.
-3. End of stream: flush `buffer`, then `parseBracketToolCalls(totalContent)` from `infrastructure/transformers/tool-call-parser.js` for inline bracket tool calls. Emit the credits footer `_Credits Used: X.XX_` as text when `meteringUsage` is set.
+3. End of stream: flush `buffer`, then `parseBracketToolCalls(totalContent)` from `infrastructure/transformers/tool-call-parser.js` for inline bracket tool calls. Emit the credits footer `_Credits Used: X.XX_` only on the final step of a turn (no tool calls), showing the turn's total credits. Totals are kept per session in `credits-footer.ts`.
 4. Usage: `estimateTokens(textOnlyContent)` from `plugin/response.js` when no token metadata arrives. `getContextWindowSize(model)` from `plugin/models.js` derives input tokens from `contextUsagePercentage`.
 5. Terminate with `message_delta` (stop reason `tool_use` or `end_turn`) and `message_stop`.
 

@@ -1,5 +1,6 @@
 import { parseBracketToolCalls } from '../../infrastructure/transformers/tool-call-parser.js'
 import { restoreToolName } from '../../infrastructure/transformers/tool-transformer.js'
+import { addStepCredits, creditKeyFor } from '../credits-footer.js'
 import { debug } from '../logger.js'
 import { getContextWindowSize } from '../models.js'
 import { estimateTokens } from '../response.js'
@@ -13,7 +14,8 @@ export async function* transformKiroStream(
   response: Response,
   model: string,
   conversationId: string,
-  toolNameMap?: ToolNameMap
+  toolNameMap?: ToolNameMap,
+  sessionKey?: string
 ): AsyncGenerator<any> {
   const thinkingRequested = true
 
@@ -229,21 +231,6 @@ export async function* transformKiroStream(
       if (_c !== null) yield _c
     }
 
-    if (meteringUsage !== null) {
-      const creditsText = `\n\n_Credits Used: ${meteringUsage.toFixed(2)}_`
-      for (const ev of createTextDeltaEvents(creditsText, streamState)) {
-        const _c = convertToOpenAI(ev, conversationId, model)
-        if (_c !== null) yield _c
-      }
-    } else {
-      debug(`Kiro API response completed without meteringEvent for model=${model} (streaming/cli)`)
-    }
-
-    for (const ev of stopBlock(streamState.textBlockIndex, streamState)) {
-      const _c = convertToOpenAI(ev, conversationId, model)
-      if (_c !== null) yield _c
-    }
-
     const bracketToolCalls = parseBracketToolCalls(totalContent)
     if (bracketToolCalls.length > 0) {
       for (const btc of bracketToolCalls) {
@@ -253,6 +240,28 @@ export async function* transformKiroStream(
           input: typeof btc.input === 'string' ? btc.input : JSON.stringify(btc.input)
         })
       }
+    }
+
+    // Runs after bracket tool calls are merged, so the final-step check sees the full list
+    if (meteringUsage !== null) {
+      const creditsText = addStepCredits(
+        creditKeyFor(sessionKey),
+        meteringUsage,
+        toolCalls.length > 0
+      )
+      if (creditsText) {
+        for (const ev of createTextDeltaEvents(creditsText, streamState)) {
+          const _c = convertToOpenAI(ev, conversationId, model)
+          if (_c !== null) yield _c
+        }
+      }
+    } else {
+      debug(`Kiro API response completed without meteringEvent for model=${model} (streaming/cli)`)
+    }
+
+    for (const ev of stopBlock(streamState.textBlockIndex, streamState)) {
+      const _c = convertToOpenAI(ev, conversationId, model)
+      if (_c !== null) yield _c
     }
 
     if (toolCalls.length > 0) {

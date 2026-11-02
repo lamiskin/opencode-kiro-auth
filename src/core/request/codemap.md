@@ -35,7 +35,7 @@ In: `(url, init)`. `init.body` is an OpenAI-style JSON body. Headers `x-kiro-ses
    - Other: throw `Kiro Error: <status> - <msg>`.
 5. No status: `errorHandler.handleNetworkError()`, retry on `ECONNRESET|ETIMEDOUT|ENOTFOUND|network|fetch failed`, else rethrow.
 
-Out: `Response`. Streaming is `text/event-stream` with `data: <chunk>` lines from `transformSdkStream()`, ending in `data: [DONE]`. Non-streaming is one `chat.completion` JSON. Tool calls are accumulated by `toolUseId` and names restored via `restoreToolName()`. Metering appends `\n\n_Credits Used: X.XX_` to content. Token usage falls back to `estimateTokens()` plus `getContextWindowSize()` when Kiro sends no `tokenUsage`.
+Out: `Response`. Streaming is `text/event-stream` with `data: <chunk>` lines from `transformSdkStream()`, ending in `data: [DONE]`. Non-streaming is one `chat.completion` JSON. Tool calls are accumulated by `toolUseId` and names restored via `restoreToolName()`. Metering appends `\n\n_Credits Used: X.XX_` on the final step of a turn only, showing the turn's total credits (tool-call steps add to the running total, see `plugin/credits-footer.ts`). Token usage falls back to `estimateTokens()` plus `getContextWindowSize()` when Kiro sends no `tokenUsage`.
 
 ## Integration (consumers and dependencies)
 Consumers:

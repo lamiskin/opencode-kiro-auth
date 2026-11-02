@@ -1,6 +1,7 @@
 import { parseBracketToolCalls } from '../../infrastructure/transformers/tool-call-parser.js'
 import { restoreToolName } from '../../infrastructure/transformers/tool-transformer.js'
 import { debug } from '../../plugin/logger.js'
+import { addStepCredits, creditKeyFor } from '../credits-footer.js'
 import { getContextWindowSize } from '../models.js'
 import { estimateTokens } from '../response.js'
 import type { ToolNameMap } from '../types.js'
@@ -39,7 +40,8 @@ export async function* transformSdkStream(
   sdkResponse: any,
   model: string,
   conversationId: string,
-  toolNameMap?: ToolNameMap
+  toolNameMap?: ToolNameMap,
+  sessionKey?: string
 ): AsyncGenerator<any, StreamFinalUsage, undefined> {
   const thinkingRequested = true
   const startedAt = Date.now()
@@ -305,11 +307,18 @@ export async function* transformSdkStream(
       }
     }
 
+    // Runs after bracket tool calls are merged, so the final-step check sees the full list
     if (meteringUsage !== null) {
-      const creditsText = `\n\n_Credits Used: ${meteringUsage.toFixed(2)}_`
-      for (const ev of createTextDeltaEvents(creditsText, streamState)) {
-        const _c = convertToOpenAI(ev, conversationId, model)
-        if (_c !== null) yield _c
+      const creditsText = addStepCredits(
+        creditKeyFor(sessionKey),
+        meteringUsage,
+        toolCalls.length > 0
+      )
+      if (creditsText) {
+        for (const ev of createTextDeltaEvents(creditsText, streamState)) {
+          const _c = convertToOpenAI(ev, conversationId, model)
+          if (_c !== null) yield _c
+        }
       }
     } else {
       debug(`Kiro API response completed without meteringEvent for model=${model} (sdk)`)
