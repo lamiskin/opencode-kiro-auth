@@ -33,7 +33,7 @@ describe('logger diagnostics', () => {
       ['a', 2, 0],
       ['u', 0, 2]
     ])
-    expect(shape[0][1]).toBeGreaterThan(0)
+    expect(shape[0]![1]).toBeGreaterThan(0)
   })
 
   test('computeHistoryHashes returns 8-char hex without content', () => {

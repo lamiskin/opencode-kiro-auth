@@ -8,24 +8,28 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v5
 
       - uses: oven-sh/setup-bun@v2
 
-      - run: bun install
+      - run: bun install --frozen-lockfile
 
       - run: bun run typecheck
 
+      - run: bun test
+
       - run: bun run build
 
-      - name: Setup Node.js for npm publish
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          registry-url: 'https://registry.npmjs.org'
+      - name: Pack tarball
+        run: npm pack
 
-      - name: Publish to npm
-        run: npm publish --access public
+      - name: Create GitHub release with tarball
+        run: |
+          gh release create "${GITHUB_REF_NAME}" *.tgz \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

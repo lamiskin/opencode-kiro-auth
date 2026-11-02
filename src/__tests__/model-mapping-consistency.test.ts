@@ -45,7 +45,7 @@ describe('model-mapping-consistency', () => {
       for (const model of activeModels) {
         const resolved = resolveKiroModel(model)
         const entry = getModelCatalogEntry(resolved)
-        expect(entry).toBeDefined(`resolveKiroModel('${model}') -> '${resolved}' not in catalog`)
+        expect(entry, `resolveKiroModel('${model}') -> '${resolved}' not in catalog`).toBeDefined()
       }
     })
   })
@@ -75,12 +75,12 @@ describe('model-mapping-consistency', () => {
 
       for (const model of claudeModels) {
         const rate = getModelRate(model)
-        expect(rate).not.toBe('1.0x', `${model} has default rate, should be specialized`)
+        expect(rate, `${model} has default rate, should be specialized`).not.toBe('1.0x')
       }
     })
 
     test('thinking variants have same rate as base', () => {
-      const thinkingModels = [
+      const thinkingModels: [string, string][] = [
         ['claude-haiku-4-5-thinking', 'claude-haiku-4-5'],
         ['claude-sonnet-5-thinking', 'claude-sonnet-5'],
         ['claude-opus-4-8-thinking', 'claude-opus-4-8'],
@@ -90,7 +90,7 @@ describe('model-mapping-consistency', () => {
       for (const [thinkingModel, baseModel] of thinkingModels) {
         const thinkingRate = getModelRate(thinkingModel)
         const baseRate = getModelRate(baseModel)
-        expect(thinkingRate).toBe(baseRate, `${thinkingModel} rate differs from ${baseModel}`)
+        expect(thinkingRate, `${thinkingModel} rate differs from ${baseModel}`).toBe(baseRate)
       }
     })
   })
@@ -192,7 +192,7 @@ describe('model-mapping-consistency', () => {
 
       // Parse live docs
       const liveCatalog = parseModelsMarkdown(liveMarkdown)
-      expect(liveCatalog.size).toBeGreaterThan(0, 'No models parsed from live docs')
+      expect(liveCatalog.size, 'No models parsed from live docs').toBeGreaterThan(0)
 
       // Get bundled models
       const bundledModels = new Map(
