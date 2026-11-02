@@ -51,7 +51,7 @@ Consumers (confirmed by grep):
 - `src/plugin/accounts.ts` imports `decodeRefreshToken` and `encodeRefreshToken`.
 - `src/plugin/token.ts` imports `decodeRefreshToken` and `encodeRefreshToken`.
 
-Consumers of `oauth-idc.ts` were not found by the grep pattern used (`kiro/oauth-idc` or `./oauth-idc`). Check for a dynamic or differently-pathed import before relying on this.
+- `src/core/auth/idc-auth-method.ts` imports `authorizeKiroIDC` and `pollKiroIDCToken` from `oauth-idc.ts` (verified by grep).
 
 Dependencies:
 - `../constants`: `KIRO_AUTH_SERVICE`, `KIRO_CONSTANTS`, `buildUrl`, `normalizeRegion`.

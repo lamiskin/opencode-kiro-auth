@@ -43,7 +43,7 @@ Consumers:
 
 Dependencies:
 - `runtime.ts` (`createRuntime`, `Runtime`).
-- `host/port.ts` (`HostPort`).
+- `host/port.ts` (`HostPort`). Both v1 and v2 import it (verified by grep).
 - `core/auth/auth-handler.ts`, `core/request/request-handler.ts`.
 - `infrastructure/database/account-cache.ts`, `account-repository.ts`.
 - `plugin/accounts.ts`, `plugin/auth-bootstrap.ts`, `plugin/config/index.ts`, `plugin/model-registry.ts`, `plugin/logger.ts`.
