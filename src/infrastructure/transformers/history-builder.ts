@@ -115,6 +115,12 @@ export function buildHistory(msgs: any[], resolved: string): CodeWhispererMessag
       }
 
       if (trs.length) uim.userInputMessageContext = { toolResults: deduplicateToolResults(trs) }
+      // Kiro rejects a history user turn with no text, tool results or images (400
+      // "Improperly formed request"), and the same history is replayed on every retry.
+      // Ported from aakamshpm/opencode-kiro-auth (639a197).
+      if (!uim.content && !trs.length && !uim.images?.length) {
+        uim.content = '[system: conversation continues]'
+      }
       const prev = history[history.length - 1]
       if (prev && prev.userInputMessage)
         history.push({ assistantResponseMessage: { content: '[system: conversation continues]' } })

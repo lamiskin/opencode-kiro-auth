@@ -25,6 +25,16 @@ interface StreamFinalUsage {
   contextUsagePercentage?: number
 }
 
+/**
+ * OpenAI-compatible error chunk. `@ai-sdk/openai-compatible` turns it into a provider
+ * error carrying `message`. Throwing from the generator is replaced by the SDK's generic
+ * "Failed to process successful response", which loses the diagnostic.
+ * Ported from Mickael-Near/opencode-kiro-auth (d2dbff5).
+ */
+function errorChunk(message: string, code = 'kiro_stream_error'): any {
+  return { error: { message, type: code, code } }
+}
+
 export async function* transformSdkStream(
   sdkResponse: any,
   model: string,
@@ -32,6 +42,16 @@ export async function* transformSdkStream(
   toolNameMap?: ToolNameMap
 ): AsyncGenerator<any, StreamFinalUsage, undefined> {
   const thinkingRequested = true
+  const startedAt = Date.now()
+  const finalUsage = (): StreamFinalUsage => ({
+    meteringUsage,
+    inputTokens,
+    outputTokens,
+    totalTokens: totalTokens || inputTokens + outputTokens,
+    cacheReadInputTokens,
+    cacheWriteInputTokens,
+    contextUsagePercentage: contextUsagePercentage ?? undefined
+  })
 
   const streamState: StreamState = {
     thinkingRequested,
@@ -196,6 +216,17 @@ export async function* transformSdkStream(
               typeof tc.input === 'string' ? tc.input : (JSON.stringify(tc.input) ?? '')
           }
         }
+      } else if (event.error) {
+        // In-band service errors were dropped silently, letting a cut response pass as end_turn.
+        const detail = event.error.message || event.error.name || 'the service reported a failure'
+        yield errorChunk(`Kiro error: ${detail}`)
+        return finalUsage()
+      } else if (event.invalidStateEvent) {
+        const invalid = event.invalidStateEvent
+        yield errorChunk(
+          `Kiro error: ${invalid.message || invalid.reason || 'the service rejected the request mid-stream'}`
+        )
+        return finalUsage()
       } else if (event.metadataEvent) {
         const usage = event.metadataEvent.tokenUsage
         if (usage) {
@@ -287,6 +318,21 @@ export async function* transformSdkStream(
     for (const ev of stopBlock(streamState.textBlockIndex, streamState)) {
       const _c = convertToOpenAI(ev, conversationId, model)
       if (_c !== null) yield _c
+    }
+
+    // Reasoning with no text and no tool call means the upstream stream was cut, not answered.
+    // Ported from Mickael-Near/opencode-kiro-auth (d2dbff5).
+    if (
+      streamState.thinkingBlockIndex !== null &&
+      streamState.textBlockIndex === null &&
+      toolCalls.length === 0
+    ) {
+      const seconds = Math.round((Date.now() - startedAt) / 1000)
+      yield errorChunk(
+        `Kiro stream ended after ${seconds}s of reasoning with no answer or tool call; the upstream response was cut off. Retry, or lower the effort level if this repeats.`,
+        'kiro_stream_truncated'
+      )
+      return finalUsage()
     }
 
     if (toolCalls.length > 0) {
@@ -386,13 +432,5 @@ export async function* transformSdkStream(
     throw e
   }
 
-  return {
-    meteringUsage,
-    inputTokens,
-    outputTokens,
-    totalTokens: totalTokens || inputTokens + outputTokens,
-    cacheReadInputTokens,
-    cacheWriteInputTokens,
-    contextUsagePercentage: contextUsagePercentage ?? undefined
-  }
+  return finalUsage()
 }
