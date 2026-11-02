@@ -1,4 +1,5 @@
 import { KIRO_CONSTANTS } from '../../constants.js'
+import { CREDITS_FOOTER_RE } from '../../plugin/credits-footer.js'
 import {
   convertImagesToKiroFormat,
   extractAllImages,
@@ -176,6 +177,8 @@ export function buildHistory(msgs: any[], resolved: string): CodeWhispererMessag
           })
         }
       }
+      // Credit footers from earlier turns must not reach the model
+      arm.content = arm.content.replace(CREDITS_FOOTER_RE, '')
       if (th)
         arm.content = arm.content
           ? `<thinking>${th}</thinking>\n\n${arm.content}`

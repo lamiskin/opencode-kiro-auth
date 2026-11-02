@@ -2,6 +2,7 @@ import { GenerateAssistantResponseCommand } from '@aws/codewhisperer-streaming-c
 import type { AccountRepository } from '../../infrastructure/database/account-repository'
 import type { AccountManager } from '../../plugin/accounts'
 import type { KiroConfig } from '../../plugin/config'
+import { creditKeyFor, resetCreditsTurn } from '../../plugin/credits-footer'
 import { isOpenAIModel } from '../../plugin/effort'
 import { isPermanentError } from '../../plugin/health'
 import * as logger from '../../plugin/logger'
@@ -110,6 +111,17 @@ export class RequestHandler {
       kind: h.get('x-kiro-kind') || undefined
     }
     const body = init?.body ? JSON.parse(init.body) : {}
+    // A new user turn resets the credit total, so an aborted turn cannot leak into it
+    const creditKey = creditKeyFor(sessionID)
+    const lastMsg = body.messages?.[body.messages.length - 1]
+    if (
+      lastMsg?.role === 'user' &&
+      !(
+        Array.isArray(lastMsg.content) && lastMsg.content.some((p: any) => p.type === 'tool_result')
+      )
+    ) {
+      resetCreditsTurn(creditKey)
+    }
     const model = this.extractModel(url) || body.model || 'claude-sonnet-4-5'
     const think =
       model.endsWith('-thinking') || !!body.providerOptions?.thinkingConfig || !!body.thinkingConfig
@@ -217,7 +229,8 @@ export class RequestHandler {
           sdkPrep.conversationId,
           sdkPrep.streaming,
           sdkPrep.toolNameMap,
-          apiTimestamp
+          apiTimestamp,
+          creditKey
         )
       } catch (e: any) {
         const httpStatus = e?.$metadata?.httpStatusCode

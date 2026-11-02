@@ -4,6 +4,7 @@ import {
   deduplicateToolCalls,
   parseBracketToolCalls
 } from '../infrastructure/transformers/tool-call-parser.js'
+import { addStepCredits, creditKeyFor } from './credits-footer.js'
 import { debug } from './logger.js'
 import { getContextWindowSize } from './models.js'
 import { ParsedResponse, ToolCall } from './types'
@@ -24,6 +25,15 @@ export function parseEventStream(rawResponse: string, model?: string): ParsedRes
     fullResponseText = cleanToolCallsFromText(fullResponseText, uniqueToolCalls)
   }
 
+  // Footer after tool calls are final (bracket calls included), so the final-step check is complete
+  if (parsedFromEvents.meteringUsage !== undefined) {
+    fullResponseText += addStepCredits(
+      creditKeyFor(),
+      parsedFromEvents.meteringUsage,
+      uniqueToolCalls.length > 0
+    )
+  }
+
   return {
     content: fullResponseText,
     toolCalls: uniqueToolCalls,
@@ -33,7 +43,10 @@ export function parseEventStream(rawResponse: string, model?: string): ParsedRes
   }
 }
 
-function parseEventStreamChunk(rawText: string, model?: string): ParsedResponse {
+function parseEventStreamChunk(
+  rawText: string,
+  model?: string
+): ParsedResponse & { meteringUsage?: number } {
   const events = parseAwsEventStreamBuffer(rawText)
 
   let content = ''
@@ -42,6 +55,7 @@ function parseEventStreamChunk(rawText: string, model?: string): ParsedResponse 
   let inputTokens: number | undefined
   let outputTokens: number | undefined
   let contextUsagePercentage: number | undefined
+  let meteringUsage: number | undefined
 
   for (const event of events) {
     if (event.type === 'content' && event.data) {
@@ -70,8 +84,7 @@ function parseEventStreamChunk(rawText: string, model?: string): ParsedResponse 
     } else if (event.type === 'contextUsage') {
       contextUsagePercentage = event.data.contextUsagePercentage
     } else if (event.type === 'meteringEvent' && event.data.usage !== undefined) {
-      const creditsText = `\n\n_Credits Used: ${event.data.usage.toFixed(2)}_`
-      content += creditsText
+      meteringUsage = event.data.usage
     } else if (event.type === 'meteringEvent') {
       debug(
         `Kiro API response completed without meteringUsage captured for model=${model || 'unknown'}`
@@ -107,7 +120,8 @@ function parseEventStreamChunk(rawText: string, model?: string): ParsedResponse 
     toolCalls,
     stopReason: stopReason || (toolCalls.length > 0 ? 'tool_use' : 'end_turn'),
     inputTokens,
-    outputTokens
+    outputTokens,
+    meteringUsage
   }
 }
 

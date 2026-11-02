@@ -17,7 +17,7 @@ On top of upstream `tickernelz/opencode-kiro-auth`, this fork adds:
   hardcoded values, with a bundled fallback if the fetch fails.
 - **GPT-5.6 / thinking model support**: Correct `reasoning.effort` / `reasoning.mode`
   request path for OpenAI-style models, separate from Claude's `output_config.effort`.
-- **Credits-used footer**: Displays the Kiro credits consumed by each response inline.
+- **Credits-used footer**: Shows the total Kiro credits for the whole turn, once, on the final step.
 - **`kiro-usage` CLI script** and an **OpenChamber usage panel extension** (see below) —
   neither exists upstream.
 - **Streaming fix**: Cache token usage (`cache_creation_input_tokens` /

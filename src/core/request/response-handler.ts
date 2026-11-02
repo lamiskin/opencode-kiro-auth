@@ -1,4 +1,5 @@
 import { restoreToolName } from '../../infrastructure/transformers/tool-transformer.js'
+import { addStepCredits, creditKeyFor } from '../../plugin/credits-footer.js'
 import { debug, logApiUsage } from '../../plugin/logger.js'
 import { getContextWindowSize } from '../../plugin/models.js'
 import { estimateTokens } from '../../plugin/response.js'
@@ -21,12 +22,27 @@ export class ResponseHandler {
     conversationId: string,
     streaming: boolean,
     toolNameMap?: ToolNameMap,
-    apiTimestamp?: string | null
+    apiTimestamp?: string | null,
+    sessionKey?: string
   ): Promise<Response> {
     if (streaming) {
-      return this.handleSdkStreaming(sdkResponse, model, conversationId, toolNameMap, apiTimestamp)
+      return this.handleSdkStreaming(
+        sdkResponse,
+        model,
+        conversationId,
+        toolNameMap,
+        apiTimestamp,
+        sessionKey
+      )
     }
-    return this.handleSdkNonStreaming(sdkResponse, model, conversationId, toolNameMap, apiTimestamp)
+    return this.handleSdkNonStreaming(
+      sdkResponse,
+      model,
+      conversationId,
+      toolNameMap,
+      apiTimestamp,
+      sessionKey
+    )
   }
 
   private async handleSdkStreaming(
@@ -34,9 +50,10 @@ export class ResponseHandler {
     model: string,
     conversationId: string,
     toolNameMap?: ToolNameMap,
-    apiTimestamp?: string | null
+    apiTimestamp?: string | null,
+    sessionKey?: string
   ): Promise<Response> {
-    const s = transformSdkStream(sdkResponse, model, conversationId, toolNameMap)
+    const s = transformSdkStream(sdkResponse, model, conversationId, toolNameMap, sessionKey)
 
     // Stream incrementally: iterate manually inside start(c) to capture final return value
     // while still allowing true SSE streaming (time-to-first-token)
@@ -83,7 +100,8 @@ export class ResponseHandler {
     model: string,
     conversationId: string,
     toolNameMap?: ToolNameMap,
-    apiTimestamp?: string | null
+    apiTimestamp?: string | null,
+    sessionKey?: string
   ): Promise<Response> {
     // For non-streaming SDK responses, collect all events
     let content = ''
@@ -157,9 +175,6 @@ export class ResponseHandler {
         }
         if (event.meteringEvent?.usage !== undefined) {
           meteringUsage = event.meteringEvent.usage
-          const usage = event.meteringEvent.usage
-          const creditsText = `\n\n_Credits Used: ${usage.toFixed(2)}_`
-          content += creditsText
         } else if (event.meteringEvent) {
           debug(`Kiro SDK response completed without meteringUsage captured for model=${model}`)
         }
@@ -181,6 +196,11 @@ export class ResponseHandler {
         (toolCall): toolCall is AccumulatedToolCall & { name: string } =>
           typeof toolCall?.name === 'string'
       )
+
+    // Footer on the final step only; tool-call steps add to the turn total
+    if (meteringUsage !== undefined) {
+      content += addStepCredits(creditKeyFor(sessionKey), meteringUsage, toolCalls.length > 0)
+    }
 
     const oai: any = {
       id: conversationId,
