@@ -1,4 +1,5 @@
 import {
+  CAPPED_CONTEXT_WINDOWS,
   extractRegionFromArn,
   isLongContextModel,
   MODEL_MAPPING,
@@ -41,6 +42,9 @@ export function resolveKiroModel(model: string): string {
 }
 
 export function getContextWindowSize(model: string): number {
+  // Capped companions never exceed their cap, whatever the runtime catalog says
+  const capped = CAPPED_CONTEXT_WINDOWS[model]
+  if (capped !== undefined) return capped
   // Prefer runtime context from ListAvailableModels if available
   const runtimeContext = activeContextWindows.get(model)
   if (runtimeContext !== undefined) {

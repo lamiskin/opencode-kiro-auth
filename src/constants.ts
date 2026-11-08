@@ -121,8 +121,9 @@ export const SUPPORTED_MODELS = Object.keys(MODEL_MAPPING)
 const EXPLICIT_1M_IDS = new Set(Object.keys(MODEL_MAPPING).filter((k) => k.includes('-1m')))
 
 /**
- * Base Claude IDs that have 1M context (non-explicit -1m variants).
- * Derived from MODEL_MAPPING: all entries with opus-4-6 or later / sonnet-5 or later / fable-5-1.
+ * Base IDs that have 1M context (non-explicit -1m variants, non-capped companions).
+ * Derived from MODEL_MAPPING: Claude opus-4-6+ / sonnet-4-6+ / fable-5-1 / haiku-5-5,
+ * and GPT-5.6 base IDs (the -272k companions are capped).
  */
 function generateBase1MClaude(): Set<string> {
   const base1m = new Set<string>()
@@ -147,6 +148,14 @@ function generateBase1MClaude(): Set<string> {
     if (key.startsWith('claude-fable-5-1')) {
       base1m.add(key)
     }
+    // Claude Haiku 5.5 has 1M context (the -100k companion is capped)
+    if (key.startsWith('claude-haiku-5-5') && !key.includes('-100k')) {
+      base1m.add(key)
+    }
+    // GPT-5.6 has 1M context (the -272k companion is capped)
+    if (key.startsWith('gpt-5.6-') && !key.includes('-272k')) {
+      base1m.add(key)
+    }
   }
   return base1m
 }
@@ -157,6 +166,15 @@ const LONG_CONTEXT_MODELS = new Set([...EXPLICIT_1M_IDS, ...BASE_1M_CLAUDE_IDS])
 
 /** Models with 272K context (two-tier pricing tier boundary) */
 const CAPPED_272K_MODELS = new Set(Object.keys(MODEL_MAPPING).filter((k) => k.includes('-272k')))
+
+/** Capped companion windows. These win over runtime catalog values, which alias the base model. */
+export const CAPPED_CONTEXT_WINDOWS: Readonly<Record<string, number>> = {
+  'claude-haiku-5-5-100k': 100_000,
+  'claude-haiku-5-5-100k-thinking': 100_000,
+  'gpt-5.6-sol-272k': 272_000,
+  'gpt-5.6-terra-272k': 272_000,
+  'gpt-5.6-luna-272k': 272_000
+}
 
 export function is272KModel(model: string): boolean {
   return CAPPED_272K_MODELS.has(model)
