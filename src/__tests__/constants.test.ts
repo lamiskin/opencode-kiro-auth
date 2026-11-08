@@ -21,10 +21,29 @@ describe('isLongContextModel', () => {
       'claude-sonnet-5-5',
       'claude-sonnet-5-5-thinking',
       'claude-fable-5-1',
-      'claude-fable-5-1-thinking'
+      'claude-fable-5-1-thinking',
+      'claude-haiku-5-5',
+      'claude-haiku-5-5-thinking',
+      'gpt-5.6-sol',
+      'gpt-5.6-sol-thinking',
+      'gpt-5.6-terra',
+      'gpt-5.6-luna'
     ]
     for (const model of base1mClaude) {
       expect(isLongContextModel(model), `${model} has 1M context`).toBe(true)
+    }
+  })
+
+  test('returns false for capped companions (-100k, -272k)', () => {
+    const capped = [
+      'claude-haiku-5-5-100k',
+      'claude-haiku-5-5-100k-thinking',
+      'gpt-5.6-sol-272k',
+      'gpt-5.6-terra-272k',
+      'gpt-5.6-luna-272k'
+    ]
+    for (const model of capped) {
+      expect(isLongContextModel(model), `${model} is capped`).toBe(false)
     }
   })
 
@@ -43,16 +62,7 @@ describe('isLongContextModel', () => {
   })
 
   test('returns false for non-Claude models', () => {
-    const nonClaude = [
-      'gpt-5.6-sol',
-      'gpt-5.6-terra',
-      'gpt-5.6-luna',
-      'deepseek-3.2',
-      'minimax-m2.5',
-      'glm-5',
-      'qwen3-coder-next',
-      'auto'
-    ]
+    const nonClaude = ['deepseek-3.2', 'minimax-m2.5', 'glm-5', 'qwen3-coder-next', 'auto']
     for (const model of nonClaude) {
       expect(isLongContextModel(model), `${model} should not be marked as long context`).toBe(false)
     }

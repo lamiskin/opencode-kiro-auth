@@ -23,7 +23,12 @@ describe('context window resolution', () => {
         'claude-sonnet-5-5',
         'claude-sonnet-5-5-thinking',
         'claude-fable-5-1',
-        'claude-fable-5-1-thinking'
+        'claude-fable-5-1-thinking',
+        'claude-haiku-5-5',
+        'claude-haiku-5-5-thinking',
+        'gpt-5.6-sol',
+        'gpt-5.6-terra',
+        'gpt-5.6-luna'
       ]
       for (const model of base1m) {
         expect(isLongContextModel(model), `${model} (base 1M) should be long context`).toBe(true)
@@ -47,20 +52,28 @@ describe('context window resolution', () => {
     })
 
     test('returns false for non-Claude models', () => {
-      const nonClaude = [
-        'gpt-5.6-sol',
-        'gpt-5.6-terra',
-        'gpt-5.6-luna',
-        'deepseek-3.2',
-        'minimax-m2.5',
-        'glm-5',
-        'qwen3-coder-next'
-      ]
+      const nonClaude = ['deepseek-3.2', 'minimax-m2.5', 'glm-5', 'qwen3-coder-next']
       for (const model of nonClaude) {
         expect(isLongContextModel(model), `${model} (non-Claude) should not be long context`).toBe(
           false
         )
       }
+    })
+  })
+
+  describe('getContextWindowSize: base vs capped companions', () => {
+    test('base Haiku 5.5 and GPT-5.6 default to 1M without runtime context', () => {
+      expect(getContextWindowSize('claude-haiku-5-5')).toBe(1000000)
+      expect(getContextWindowSize('claude-haiku-5-5-thinking')).toBe(1000000)
+      expect(getContextWindowSize('gpt-5.6-sol')).toBe(1000000)
+      expect(getContextWindowSize('gpt-5.6-terra-thinking')).toBe(1000000)
+    })
+
+    test('capped companions keep their capped window', () => {
+      expect(getContextWindowSize('claude-haiku-5-5-100k')).toBe(100000)
+      expect(getContextWindowSize('claude-haiku-5-5-100k-thinking')).toBe(100000)
+      expect(getContextWindowSize('gpt-5.6-sol-272k')).toBe(272000)
+      expect(getContextWindowSize('gpt-5.6-luna-272k')).toBe(272000)
     })
   })
 

@@ -147,6 +147,14 @@ describe('two-tier pricing', () => {
     expect(effectiveRate('claude-haiku-5-5', 100000)).toBe('0.06x')
     expect(effectiveRate('claude-haiku-5-5-thinking', 100001)).toBe('0.3x')
   })
+  it('capped -100k/-272k companions never get the surcharge', () => {
+    expect(effectiveRate('claude-haiku-5-5-100k-thinking', 150000)).toBe('0.06x')
+    expect(effectiveRate('claude-haiku-5-5-100k', 100001)).toBe('0.06x')
+    expect(effectiveRate('gpt-5.6-sol-272k', 300000)).toBe('4.4x')
+    expect(effectiveRate('gpt-5.6-terra-272k', 272001)).toBe(
+      effectiveRate('gpt-5.6-terra', undefined)
+    )
+  })
   it('non-tiered models and missing tokens keep the base rate', () => {
     expect(effectiveRate('claude-sonnet-5', 900000)).toBe('1.3x')
     expect(effectiveRate('gpt-5.6-sol', undefined)).toBe('4.4x')

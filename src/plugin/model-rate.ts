@@ -36,6 +36,9 @@ const TIERS: Tier[] = [
 
 const fmt = (n: number) => `${+n.toFixed(2)}x`
 
+/** Capped companions (`-272k`/`-100k`, optional `-thinking`) never exceed their cap, so no surcharge. */
+const CAPPED_SUFFIX = /-(272k|100k)(-thinking)?$/
+
 /**
  * Rate actually billed for a request. Kiro returns metered credits already tier-correct;
  * this only fixes the logged `rate` label. shortcut: inputTokens is derived from
@@ -48,14 +51,16 @@ export function effectiveRate(
 ): string {
   const base = rateForLog(modelId, onMissing)
   const tier = TIERS.find((t) => t.test.test(modelId))
-  if (!tier || !inputTokens || inputTokens <= tier.threshold) return base
+  if (!tier || CAPPED_SUFFIX.test(modelId) || !inputTokens || inputTokens <= tier.threshold) {
+    return base
+  }
   return fmt(tier.over(parseFloat(base)))
 }
 
 /** Picker label rate. Full-context entries show both tiers; capped `-272k`/`-100k` companions stay flat. */
 export function rateLabel(modelId: string, rate: string): string {
   const tier = TIERS.find((t) => t.test.test(modelId))
-  if (!tier || /-(272k|100k)(-thinking)?$/.test(modelId)) return rate
+  if (!tier || CAPPED_SUFFIX.test(modelId)) return rate
   const k = `${tier.threshold / 1000}K`
   return `${rate} ≤${k}, ${fmt(tier.over(parseFloat(rate)))} >${k}`
 }
