@@ -36,10 +36,7 @@ mock.module('../plugin/storage/sqlite.js', () => ({
     markAccountsUnhealthy: async () => {}
   }
 }))
-const realUsageModule = '../plugin/usage.js?real' // variable so tsc does not resolve the query suffix
-const realUsage = await import(realUsageModule)
 mock.module('../plugin/usage.js', () => ({
-  ...realUsage,
   fetchUsageLimits: async () => ({ usedCount: 1, limitCount: 100, email: 'user@corp.example' })
 }))
 mock.module('../plugin/logger.js', () => ({
