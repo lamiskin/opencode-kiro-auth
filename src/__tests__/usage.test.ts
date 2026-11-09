@@ -91,7 +91,12 @@ describe('updateAccountQuota', () => {
   })
 })
 
+const realUsageModule = '../plugin/usage.js?real'
+const realUsage = await import(realUsageModule)
+// Spread the real exports: bun's mock.module is process-wide, so a stub with only
+// fetchUsageLimits breaks other files that import updateAccountQuota/summarizeUsage.
 mock.module('../plugin/usage.js', () => ({
+  ...realUsage,
   fetchUsageLimits: async () => ({ usedCount: 1, limitCount: 100, email: 'user@corp.example' })
 }))
 mock.module('../plugin/logger.js', () => ({
@@ -107,8 +112,7 @@ mock.module('../plugin/logger.js', () => ({
   warn: () => {}
 }))
 
-const realUsageModule = '../plugin/usage.js?real'
-const { fetchUsageLimits: realFetchUsageLimits } = await import(realUsageModule)
+const { fetchUsageLimits: realFetchUsageLimits } = realUsage
 
 describe('fetchUsageLimits', () => {
   test('returns usedCount and limitCount from usageBreakdownList', async () => {
