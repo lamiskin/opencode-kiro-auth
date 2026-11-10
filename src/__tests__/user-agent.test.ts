@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'bun:test'
-import { KIRO_CONSTANTS, getKiroIdeUserAgent } from '../constants.js'
+import { mkdtempSync, readFileSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
+import { KIRO_CONSTANTS, getKiroIdeUserAgent, loadMachineId } from '../constants.js'
 import { transformToCodeWhisperer } from '../plugin/request.js'
 
 const auth: any = {
@@ -15,6 +18,20 @@ describe('Kiro user agent', () => {
     const ua = getKiroIdeUserAgent()
     expect(ua).toMatch(new RegExp(`^KiroIDE-${KIRO_CONSTANTS.IDE_VERSION}-[0-9a-f]{64}$`))
     expect(getKiroIdeUserAgent()).toBe(ua)
+  })
+
+  test('loadMachineId creates, reuses, and recreates an invalid id file', () => {
+    const path = join(mkdtempSync(join(tmpdir(), 'kiro-mid-')), 'sub', 'kiro-machine-id')
+    const first = loadMachineId(path)
+    expect(first).toMatch(/^[0-9a-f]{64}$/)
+    expect(readFileSync(path, 'utf8')).toBe(first)
+    expect(loadMachineId(path)).toBe(first)
+
+    writeFileSync(path, 'garbage')
+    const recreated = loadMachineId(path)
+    expect(recreated).toMatch(/^[0-9a-f]{64}$/)
+    expect(recreated).not.toBe(first)
+    expect(readFileSync(path, 'utf8')).toBe(recreated)
   })
 
   test('CodeWhisperer request headers carry the SDK version and KiroIDE token', () => {

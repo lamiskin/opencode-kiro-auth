@@ -1,15 +1,50 @@
 import * as crypto from 'crypto'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { homedir } from 'os'
+import { dirname, join } from 'path'
 import { RegionSchema } from './plugin/config/schema'
 import type { KiroRegion } from './plugin/types'
 
 const VALID_REGIONS: readonly KiroRegion[] = RegionSchema.options
 
-// Random per process: a hash of hostname/username could be brute-forced back to them.
-const KIRO_MACHINE_ID = crypto.createHash('sha256').update(crypto.randomUUID()).digest('hex')
+let machineId: string | undefined
+
+function readMachineId(path: string): string | undefined {
+  try {
+    const id = readFileSync(path, 'utf8').trim()
+    return /^[0-9a-f]{64}$/.test(id) ? id : undefined
+  } catch {
+    return undefined
+  }
+}
+
+// Random, not derived from hostname/username, which a hash could be brute-forced back to.
+// Persisted so Kiro sees one stable id across restarts; recreated if missing or invalid.
+export function loadMachineId(path: string): string {
+  const existing = readMachineId(path)
+  if (existing) return existing
+  const fresh = crypto.createHash('sha256').update(crypto.randomUUID()).digest('hex')
+  try {
+    mkdirSync(dirname(path), { recursive: true })
+    // 'wx' so concurrent instances don't overwrite each other's id; 'w' replaces a corrupt file.
+    writeFileSync(path, fresh, { mode: 0o600, flag: existsSync(path) ? 'w' : 'wx' })
+  } catch {
+    // Lost the race or unwritable dir: fall through to whatever is on disk.
+  }
+  return readMachineId(path) ?? fresh
+}
+
+function getMachineId(): string {
+  const dir =
+    process.platform === 'win32'
+      ? join(process.env.APPDATA || join(homedir(), 'AppData', 'Roaming'), 'opencode')
+      : join(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'opencode')
+  return (machineId ??= loadMachineId(join(dir, 'kiro-machine-id')))
+}
 
 /** `KiroIDE-<version>-<machine id>`, the token Kiro's own client puts in its user agent. */
 export function getKiroIdeUserAgent(): string {
-  return `${KIRO_CONSTANTS.USER_AGENT}-${KIRO_CONSTANTS.IDE_VERSION}-${KIRO_MACHINE_ID}`
+  return `${KIRO_CONSTANTS.USER_AGENT}-${KIRO_CONSTANTS.IDE_VERSION}-${getMachineId()}`
 }
 
 export function isValidRegion(region: string): region is KiroRegion {
