@@ -1,6 +1,6 @@
 import Database from 'libsql'
 import { existsSync } from 'node:fs'
-import { extractRegionFromArn, normalizeRegion } from '../../constants'
+import { extractRegionFromArn, KIRO_CONSTANTS, normalizeRegion } from '../../constants'
 import { createDeterministicAccountId } from '../accounts'
 import * as logger from '../logger'
 import { kiroDb } from '../storage/sqlite'
@@ -74,8 +74,23 @@ export async function syncFromKiroCli() {
         // in and refreshes against; the profileArn region is where the Q API lives.
         // Refreshing against the profile region fails with invalid_grant whenever the
         // two differ, so keep them separate.
-        const serviceRegion = extractRegionFromArn(profileArn) || normalizeRegion(data.region)
         const oidcRegion = normalizeRegion(data.region)
+        const clientId = data.client_id || data.clientId || (isIdc ? regCreds.clientId : undefined)
+        const clientSecret =
+          data.client_secret || data.clientSecret || (isIdc ? regCreds.clientSecret : undefined)
+        const all = kiroDb.getAccounts()
+        // Without a profile ARN, data.region is the SSO OIDC region, which may have no Q API
+        // endpoint for this account. Reuse a stored IdC row's region, else the default.
+        const storedRegion =
+          isIdc && clientId
+            ? all.find((a) => a.auth_method === 'idc' && a.client_id === clientId)?.region
+            : undefined
+        const idcFallbackRegion =
+          storedRegion && storedRegion !== oidcRegion
+            ? normalizeRegion(storedRegion)
+            : KIRO_CONSTANTS.DEFAULT_REGION
+        const serviceRegion =
+          extractRegionFromArn(profileArn) || (isIdc ? idcFallbackRegion : oidcRegion)
         const startUrl: string | undefined =
           typeof data.start_url === 'string'
             ? data.start_url
@@ -86,10 +101,6 @@ export async function syncFromKiroCli() {
         const accessToken = data.access_token || data.accessToken || ''
         const refreshToken = data.refresh_token || data.refreshToken
         if (!refreshToken) continue
-
-        const clientId = data.client_id || data.clientId || (isIdc ? regCreds.clientId : undefined)
-        const clientSecret =
-          data.client_secret || data.clientSecret || (isIdc ? regCreds.clientSecret : undefined)
 
         if (authMethod === 'idc' && (!clientId || !clientSecret)) {
           logger.warn('Kiro CLI sync: missing IDC device credentials; skipping token import')
@@ -133,7 +144,6 @@ export async function syncFromKiroCli() {
           logger.debug('Kiro CLI sync: usage fetch error', e)
         }
 
-        const all = kiroDb.getAccounts()
         if (!email) {
           let existing: any | undefined
           if (profileArn) {
