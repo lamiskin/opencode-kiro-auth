@@ -31,7 +31,16 @@ export class KiroDatabase {
     this.init()
   }
   private init() {
-    this.db.pragma('journal_mode = WAL')
+    // busy_timeout does not cover the WAL switch on a brand-new DB; concurrent first opens can return SQLITE_BUSY at once. Retry briefly.
+    for (let attempt = 0; ; attempt++) {
+      try {
+        this.db.pragma('journal_mode = WAL')
+        break
+      } catch (e: any) {
+        if (e?.code !== 'SQLITE_BUSY' || attempt >= 49) throw e
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20)
+      }
+    }
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS accounts (
         id TEXT PRIMARY KEY, email TEXT NOT NULL, auth_method TEXT NOT NULL,
