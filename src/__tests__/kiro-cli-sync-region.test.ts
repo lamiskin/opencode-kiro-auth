@@ -64,7 +64,7 @@ let dir: string
 
 function seedCliDb(
   authKv: Array<[string, Record<string, unknown>]>,
-  profileArn: string | undefined = PROFILE_ARN
+  profileArn: string | null = PROFILE_ARN
 ): void {
   const db = new Database(join(dir, 'data.sqlite3'))
   db.run('CREATE TABLE auth_kv (key TEXT PRIMARY KEY, value TEXT)')
@@ -214,5 +214,54 @@ describe('syncFromKiroCli IdC regions', () => {
 
     expect(stored).toHaveLength(1)
     expect(stored[0].oidcRegion).toBe('sa-east-1')
+  })
+
+  test('does not use the SSO region as the service region when no profile ARN exists', async () => {
+    seedCliDb(
+      [
+        ['kirocli:odic:device-registration', registration('client-new')],
+        ['kirocli:odic:token', idcToken({ region: 'ap-southeast-2' })]
+      ],
+      null
+    )
+
+    await syncFromKiroCli()
+
+    expect(stored).toHaveLength(1)
+    expect(stored[0].region).toBe('us-east-1')
+    expect(stored[0].oidcRegion).toBe('ap-southeast-2')
+  })
+
+  test('reuses the service region of a stored IdC row with the same client when no profile ARN exists', async () => {
+    seedCliDb(
+      [
+        ['kirocli:odic:device-registration', registration('client-new')],
+        ['kirocli:odic:token', idcToken({ region: 'ap-southeast-2' })]
+      ],
+      null
+    )
+    stored = [
+      {
+        id: 'existing-row',
+        email: 'existing@corp.example',
+        authMethod: 'idc',
+        region: 'eu-central-1',
+        oidcRegion: 'ap-southeast-2',
+        clientId: 'client-new',
+        clientSecret: 'client-new-secret',
+        profileArn: undefined,
+        refreshToken: 'old-refresh',
+        accessToken: 'old-access',
+        expiresAt: 0,
+        isHealthy: true,
+        lastSync: 0
+      }
+    ]
+
+    await syncFromKiroCli()
+
+    const synced = stored.find((a) => a.id !== 'existing-row')
+    expect(synced?.region).toBe('eu-central-1')
+    expect(synced?.oidcRegion).toBe('ap-southeast-2')
   })
 })
