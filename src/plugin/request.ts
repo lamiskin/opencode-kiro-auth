@@ -1,6 +1,11 @@
 import * as crypto from 'crypto'
 import * as os from 'os'
-import { KIRO_CONSTANTS, buildUrl, extractRegionFromArn } from '../constants.js'
+import {
+  KIRO_CONSTANTS,
+  buildUrl,
+  extractRegionFromArn,
+  getKiroIdeUserAgent
+} from '../constants.js'
 import {
   buildHistory,
   extractToolNamesFromHistory,
@@ -326,7 +331,9 @@ export function transformToCodeWhisperer(
     nodeV = process.version.replace('v', '')
   const osN =
     osP === 'win32' ? `windows#${osR}` : osP === 'darwin' ? `macos#${osR}` : `${osP}#${osR}`
-  const ua = `aws-sdk-js/3.738.0 ua/2.1 os/${osN} lang/js md/nodejs#${nodeV} api/codewhisperer#3.738.0 m/E KiroIDE`
+  const kiroIde = getKiroIdeUserAgent()
+  const sdkV = KIRO_CONSTANTS.SDK_VERSION
+  const ua = `aws-sdk-js/${sdkV} ua/2.1 os/${osN} lang/js md/nodejs#${nodeV} api/codewhisperer#${sdkV} m/E ${kiroIde}`
   return {
     url: buildUrl(KIRO_CONSTANTS.BASE_URL, extractRegionFromArn(auth.profileArn) ?? auth.region),
     init: {
@@ -338,7 +345,7 @@ export function transformToCodeWhisperer(
         'amz-sdk-invocation-id': crypto.randomUUID(),
         'amz-sdk-request': 'attempt=1; max=1',
         'x-amzn-kiro-agent-mode': 'vibe',
-        'x-amz-user-agent': 'aws-sdk-js/3.738.0 KiroIDE',
+        'x-amz-user-agent': `aws-sdk-js/${sdkV} ${kiroIde}`,
         'user-agent': ua,
         Connection: 'close'
       },

@@ -1,6 +1,5 @@
-import { isOpenAIModel } from './effort.js'
 import { CodeWhispererStreamingClient } from '@aws/codewhisperer-streaming-client'
-import { KIRO_CONSTANTS } from '../constants.js'
+import { getKiroIdeUserAgent } from '../constants.js'
 import type { Effort, KiroAuthDetails } from './types.js'
 
 /**
@@ -27,7 +26,12 @@ export function createSdkClient(
   const cacheKey = `${region}:${auth.email || 'default'}:${effort || 'none'}:${isOpenAI ? 'openai' : 'claude'}`
   const cached = clientCache.get(cacheKey)
 
-  if (cached && cached.token === auth.access && cached.effort === effort && cached.isOpenAI === isOpenAI) {
+  if (
+    cached &&
+    cached.token === auth.access &&
+    cached.effort === effort &&
+    cached.isOpenAI === isOpenAI
+  ) {
     return cached.client
   }
 
@@ -38,7 +42,7 @@ export function createSdkClient(
     token: () => Promise.resolve({ token }),
     maxAttempts: KIRO_CLI_MAX_ATTEMPTS,
     retryMode: 'standard',
-    customUserAgent: [[KIRO_CONSTANTS.USER_AGENT]]
+    customUserAgent: [[getKiroIdeUserAgent()]]
   })
 
   // Add Kiro-specific headers
