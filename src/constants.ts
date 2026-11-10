@@ -1,7 +1,27 @@
+import * as crypto from 'crypto'
+import * as os from 'os'
 import { RegionSchema } from './plugin/config/schema'
 import type { KiroRegion } from './plugin/types'
 
 const VALID_REGIONS: readonly KiroRegion[] = RegionSchema.options
+
+function resolveUsername(): string {
+  try {
+    return os.userInfo().username
+  } catch {
+    return process.env.USER ?? ''
+  }
+}
+
+const KIRO_MACHINE_ID = crypto
+  .createHash('sha256')
+  .update(`${os.hostname()}:${resolveUsername()}`)
+  .digest('hex')
+
+/** `KiroIDE-<version>-<machine id>`, the token Kiro's own client puts in its user agent. */
+export function getKiroIdeUserAgent(): string {
+  return `${KIRO_CONSTANTS.USER_AGENT}-${KIRO_CONSTANTS.IDE_VERSION}-${KIRO_MACHINE_ID}`
+}
 
 export function isValidRegion(region: string): region is KiroRegion {
   return VALID_REGIONS.includes(region as KiroRegion)
@@ -43,8 +63,8 @@ export const KIRO_CONSTANTS = {
   DEFAULT_REGION: 'us-east-1' as KiroRegion,
   AXIOS_TIMEOUT: 120000,
   USER_AGENT: 'KiroIDE',
-  SDK_VERSION: '3.738.0',
-  SDK_VERSION_USAGE: '3.0.0',
+  IDE_VERSION: '1.4.121',
+  SDK_VERSION: '3.1165.0',
   CHAT_TRIGGER_TYPE_MANUAL: 'MANUAL',
   ORIGIN_AI_EDITOR: 'AI_EDITOR'
 }

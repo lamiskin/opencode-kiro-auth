@@ -19,7 +19,7 @@ No I/O in `auth.ts`. `oauth-idc.ts` performs HTTP calls via global `fetch` again
 - `oauth-idc.ts` exports two interfaces:
   - `KiroIDCAuthorization`: device code, user code, verification URLs, client credentials, `interval`, `expiresIn`, region, start URL.
   - `KiroIDCTokenResult`: refresh and access tokens, `expiresAt` (epoch ms), client credentials, region, `authMethod: 'idc'`.
-- Region and endpoint resolution use `normalizeRegion` and `buildUrl` with `KIRO_AUTH_SERVICE.SSO_OIDC_ENDPOINT` from `../constants`. Shared `KIRO_CONSTANTS.USER_AGENT` goes on every request.
+- Region and endpoint resolution use `normalizeRegion` and `buildUrl` with `KIRO_AUTH_SERVICE.SSO_OIDC_ENDPOINT` from `../constants`. Every request sends `getKiroIdeUserAgent()` (`KiroIDE-<IDE_VERSION>-<machine id>`) as its `User-Agent`.
 - Polling is a bounded loop. `maxAttempts = floor(expiresIn / interval)`. The loop handles RFC 8628 errors:
   - `authorization_pending`: continue.
   - `slow_down`: add 5000 ms to the interval, then continue.
