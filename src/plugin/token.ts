@@ -28,7 +28,7 @@ export async function refreshAccessToken(auth: KiroAuthDetails): Promise<KiroAut
 
   const kiroIde = getKiroIdeUserAgent()
   const ua = isIdc
-    ? `aws-sdk-js/${KIRO_CONSTANTS.SDK_VERSION} ua/2.1 os/other lang/js md/browser#unknown_unknown api/sso-oidc#${KIRO_CONSTANTS.SDK_VERSION} m/E ${kiroIde}`
+    ? `aws-sdk-js/${KIRO_CONSTANTS.SDK_VERSION} ua/2.1 os/other lang/js md/browser#unknown_unknown api/sso-oidc#${KIRO_CONSTANTS.SDK_VERSION} m/E ${KIRO_CONSTANTS.USER_AGENT}`
     : `aws-sdk-js/${KIRO_CONSTANTS.SDK_VERSION} ${kiroIde} os/macos lang/js md/nodejs/18.0.0`
 
   try {

@@ -1,4 +1,4 @@
-import { KIRO_AUTH_SERVICE, buildUrl, getKiroIdeUserAgent, normalizeRegion } from '../constants'
+import { KIRO_AUTH_SERVICE, KIRO_CONSTANTS, buildUrl, normalizeRegion } from '../constants'
 import type { KiroRegion } from '../plugin/types'
 
 export interface KiroIDCAuthorization {
@@ -38,7 +38,7 @@ export async function authorizeKiroIDC(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'User-Agent': getKiroIdeUserAgent()
+        'User-Agent': KIRO_CONSTANTS.USER_AGENT
       },
       body: JSON.stringify({
         clientName: 'Kiro IDE',
@@ -66,7 +66,7 @@ export async function authorizeKiroIDC(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'User-Agent': getKiroIdeUserAgent()
+        'User-Agent': KIRO_CONSTANTS.USER_AGENT
       },
       body: JSON.stringify({
         clientId,
@@ -146,7 +146,7 @@ export async function pollKiroIDCToken(
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'User-Agent': getKiroIdeUserAgent()
+          'User-Agent': KIRO_CONSTANTS.USER_AGENT
         },
         body: JSON.stringify({
           clientId,
