@@ -1,22 +1,11 @@
 import * as crypto from 'crypto'
-import * as os from 'os'
 import { RegionSchema } from './plugin/config/schema'
 import type { KiroRegion } from './plugin/types'
 
 const VALID_REGIONS: readonly KiroRegion[] = RegionSchema.options
 
-function resolveUsername(): string {
-  try {
-    return os.userInfo().username
-  } catch {
-    return process.env.USER ?? ''
-  }
-}
-
-const KIRO_MACHINE_ID = crypto
-  .createHash('sha256')
-  .update(`${os.hostname()}:${resolveUsername()}`)
-  .digest('hex')
+// Random per process: a hash of hostname/username could be brute-forced back to them.
+const KIRO_MACHINE_ID = crypto.createHash('sha256').update(crypto.randomUUID()).digest('hex')
 
 /** `KiroIDE-<version>-<machine id>`, the token Kiro's own client puts in its user agent. */
 export function getKiroIdeUserAgent(): string {
