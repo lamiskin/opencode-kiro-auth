@@ -138,6 +138,8 @@ export const MODEL_MAPPING: Record<string, string> = {
   // Kimi
   'kimi-k3': 'kimi-k3',
   'kimi-k3-thinking': 'kimi-k3',
+  // Grok
+  'grok-4-7': 'grok-4.7',
   // GPT-5.6 (OpenAI)
   'gpt-5.6-sol': 'gpt-5.6-sol',
   'gpt-5.6-sol-thinking': 'gpt-5.6-sol',

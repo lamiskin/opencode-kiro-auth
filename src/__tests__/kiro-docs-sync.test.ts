@@ -30,6 +30,7 @@ const KIRO_DOCS_MODELS = [
   { id: 'minimax-m2.1', context: 200000, rate: '0.15x', hasThinking: false, isOpenAI: false },
   { id: 'qwen3-coder-next', context: 256000, rate: '0.05x', hasThinking: false, isOpenAI: false },
   { id: 'kimi-k3', context: 1000000, rate: '2.4x', hasThinking: true, isOpenAI: false },
+  { id: 'grok-4-7', context: 500000, rate: '2.7x', hasThinking: false, isOpenAI: false },
   { id: 'auto', context: null, rate: '1.0x', hasThinking: false, isOpenAI: false }
 ] as const
 

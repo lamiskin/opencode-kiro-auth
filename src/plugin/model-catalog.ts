@@ -35,7 +35,7 @@ let activeCatalog = new Map<string, ModelCatalogEntry>()
 
 /**
  * Bundled fallback data extracted from kiro.dev/docs/models.md
- * Last updated: October 2026
+ * Last updated: November 2026
  * This serves as a fallback when the remote fetch fails.
  *
  * Includes both hyphenated and dot-notation variants to handle all model ID formats.
@@ -114,6 +114,15 @@ const BUNDLED_MODEL_CATALOG: ModelCatalogEntry[] = [
 
   // Kimi
   { id: 'kimi-k3', name: 'Kimi K3', rate: '2.4x', context: 1000000 },
+
+  // Grok: two-tier pricing, 2x above 200K
+  {
+    id: 'grok-4.7',
+    name: 'Grok 4.7',
+    rate: '2.7x',
+    context: 500000,
+    longContext: { threshold: 200000, rate: '5.4x' }
+  },
 
   // Thinking variants resolve to their base models in the catalog,
   // but we include them here for direct lookups by thinking variant ID
@@ -234,6 +243,13 @@ const BUNDLED_MODEL_CATALOG: ModelCatalogEntry[] = [
 ]
 
 /**
+ * Single id form for comparisons: version dots become hyphens (claude-haiku-4.5 and claude-haiku-4-5 both map to claude-haiku-4-5).
+ */
+export function canonicalModelId(id: string): string {
+  return id.replace(/(\d)\.(\d)/g, '$1-$2')
+}
+
+/**
  * Parse the markdown table from kiro.dev/docs/models.md
  *
  * The table format is:
@@ -284,6 +300,8 @@ export function parseModelsMarkdown(markdown: string): Map<string, ModelCatalogE
       context = 128000
     } else if (contextRaw.includes('272K')) {
       context = 272000
+    } else if (contextRaw.includes('500K')) {
+      context = 500000
     }
 
     // Parse credit multiplier (remove asterisks for footnotes)
@@ -296,7 +314,9 @@ export function parseModelsMarkdown(markdown: string): Map<string, ModelCatalogE
     const id = modelNameToId(modelName)
 
     // Table has no tier info, so carry two-tier pricing over from bundled data
-    const longContext = BUNDLED_MODEL_CATALOG.find((e) => e.id === id)?.longContext
+    const longContext = BUNDLED_MODEL_CATALOG.find(
+      (e) => canonicalModelId(e.id) === canonicalModelId(id)
+    )?.longContext
 
     catalog.set(id, {
       id,
@@ -370,10 +390,10 @@ export async function refreshModelCatalog(): Promise<void> {
 export function getModelCatalogEntry(modelId: string): ModelCatalogEntry | undefined {
   const candidates = rateLookupCandidates(modelId)
   // Live data wins: search every candidate in the active catalog before bundled data
-  for (const lookup of [
-    (id: string) => activeCatalog.get(id),
-    (id: string) => BUNDLED_MODEL_CATALOG.find((e) => e.id === id)
-  ]) {
+  const sources = [Array.from(activeCatalog.values()), BUNDLED_MODEL_CATALOG]
+  for (const entries of sources) {
+    const lookup = (id: string) =>
+      entries.find((e) => canonicalModelId(e.id) === canonicalModelId(id))
     for (const id of candidates) {
       const entry = lookup(id)
       if (entry) return entry
