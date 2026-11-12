@@ -14,6 +14,7 @@ const MULTIMODAL: Modalities = { input: ['text', 'image', 'pdf'], output: ['text
 
 const CONTEXT_200K = { context: 200000, output: 64000 }
 const CONTEXT_1M = { context: 1000000, output: 64000 }
+const CONTEXT_500K = { context: 500000, output: 64000 }
 const CONTEXT_100K = { context: 100000, output: 64000 }
 const CONTEXT_272K = { context: 272000, output: 128000 }
 const CONTEXT_128K = { context: 128000, output: 64000 }
@@ -149,6 +150,13 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     limit: CONTEXT_1M,
     modalities: MULTIMODAL,
     thinking: true
+  },
+
+  // Grok
+  'grok-4-7': {
+    name: 'Grok 4.7',
+    limit: CONTEXT_500K,
+    modalities: TEXT_ONLY
   },
 
   // Open weight models

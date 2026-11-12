@@ -165,3 +165,41 @@ describe('two-tier pricing', () => {
     expect(rateLabel('claude-opus-5', '2.2x')).toBe('2.2x')
   })
 })
+
+import { canonicalModelId, parseModelsMarkdown } from '../plugin/model-catalog.js'
+
+describe('dot/hyphen canonical ids', () => {
+  it('canonicalModelId maps dot and hyphen version spellings to one form', () => {
+    expect(canonicalModelId('claude-haiku-4.5')).toBe(canonicalModelId('claude-haiku-4-5'))
+    expect(canonicalModelId('gpt-5.6-sol')).toBe('gpt-5-6-sol')
+    expect(canonicalModelId('grok-4.7')).toBe(canonicalModelId('grok-4-7'))
+  })
+
+  it('parses a 500K context row and carries Haiku 5.5 long-context tier across spellings', () => {
+    const markdown = [
+      '| Model | Context | Cost | Regions | Free |',
+      '|-------|:-------:|:----:|:-------:|:----:|',
+      '| **Claude Haiku 5.5** | 1M | 0.06x* | US, EU | |',
+      '| **Grok 4.7** | 500K | 2.7x* | US | |',
+      '',
+      '## Next'
+    ].join('\n')
+    const catalog = parseModelsMarkdown(markdown)
+    expect(catalog.get('grok-4.7')?.context).toBe(500000)
+    expect(catalog.get('claude-haiku-5.5')?.longContext).toEqual({
+      threshold: 100000,
+      rate: '0.3x'
+    })
+  })
+})
+
+describe('Grok 4.7 two-tier pricing', () => {
+  it('doubles the rate above 200K and keeps base at or below', () => {
+    expect(effectiveRate('grok-4-7', 200000)).toBe('2.7x')
+    expect(effectiveRate('grok-4-7', 200001)).toBe('5.4x')
+  })
+  it('lookups resolve for both spellings', () => {
+    expect(getModelRate('grok-4-7')).toBe('2.7x')
+    expect(getModelRate('grok-4.7')).toBe('2.7x')
+  })
+})
