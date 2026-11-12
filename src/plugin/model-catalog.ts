@@ -284,7 +284,10 @@ export function parseModelsMarkdown(markdown: string): Map<string, ModelCatalogE
     // Parse model name (remove bold markdown if present)
     const modelNameRaw = cells[0]
     if (!modelNameRaw) continue
-    const modelName = modelNameRaw.replace(/\*\*/g, '').trim()
+    const modelName = modelNameRaw
+      .replace(/<[^>]*>/g, '')
+      .replace(/\*\*/g, '')
+      .trim()
 
     // Parse context window
     const contextRaw = cells[1]

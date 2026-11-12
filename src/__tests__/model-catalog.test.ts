@@ -134,6 +134,18 @@ Some text without a table.
       expect(catalog.get('gpt-5.6-terra')?.rate).toBe('2.2x')
     })
 
+    test('strips HTML footnote tags from model names', () => {
+      const markdown = `
+| Model | Context | Cost |
+|-------|:-------:|:----:|
+| **Claude Fable 5.1**<sup>†</sup> | 1M | 6x |
+`
+      const catalog = parseModelsMarkdown(markdown)
+
+      expect(catalog.get('claude-fable-5.1')?.rate).toBe('6x')
+      expect(catalog.has('claude-fable-5.1supsup')).toBe(false)
+    })
+
     test('maps "Claude Sonnet 4.0" to the claude-sonnet-4 id', () => {
       const markdown = `
 | Model | Context | Cost |
