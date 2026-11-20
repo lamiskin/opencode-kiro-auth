@@ -490,7 +490,10 @@ describe('CodeWhisperer tool compatibility', () => {
     expect((await response.json()).usage).toEqual({
       prompt_tokens: 1234,
       completion_tokens: 56,
-      total_tokens: 1290
+      total_tokens: 1290,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 0,
+      prompt_tokens_details: { cached_tokens: 0 }
     })
   })
 
@@ -518,7 +521,8 @@ describe('CodeWhisperer tool compatibility', () => {
       completion_tokens: 56,
       total_tokens: 1290,
       cache_creation_input_tokens: 0,
-      cache_read_input_tokens: 0
+      cache_read_input_tokens: 0,
+      prompt_tokens_details: { cached_tokens: 0 }
     })
   })
 
