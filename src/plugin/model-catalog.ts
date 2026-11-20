@@ -249,6 +249,13 @@ export function canonicalModelId(id: string): string {
   return id.replace(/(\d)\.(\d)/g, '$1-$2')
 }
 
+/** "64K" -> 64000, "1M" / "1.0M" -> 1000000; undefined when the cell has no size token. */
+export function parseContextTokens(cell: string): number | undefined {
+  const m = cell.match(/(\d+(?:\.\d+)?)\s*([KM])\b/i)
+  if (!m) return undefined
+  return Math.round(parseFloat(m[1]!) * (m[2]!.toUpperCase() === 'M' ? 1_000_000 : 1_000))
+}
+
 /**
  * Parse the markdown table from kiro.dev/docs/models.md
  *
@@ -289,37 +296,31 @@ export function parseModelsMarkdown(markdown: string): Map<string, ModelCatalogE
       .replace(/\*\*/g, '')
       .trim()
 
-    // Parse context window
     const contextRaw = cells[1]
-    if (!contextRaw) continue
-    let context = 200000 // default
-    if (contextRaw.includes('1M')) {
-      context = 1000000
-    } else if (contextRaw.includes('256K')) {
-      context = 256000
-    } else if (contextRaw.includes('200K')) {
-      context = 200000
-    } else if (contextRaw.includes('128K')) {
-      context = 128000
-    } else if (contextRaw.includes('272K')) {
-      context = 272000
-    } else if (contextRaw.includes('500K')) {
-      context = 500000
-    }
+    const rateRaw = cells[2]
+    if (!contextRaw || !rateRaw) continue
+
+    const id = modelNameToId(modelName)
+    const bundled = BUNDLED_MODEL_CATALOG.find(
+      (e) => canonicalModelId(e.id) === canonicalModelId(id)
+    )
 
     // Parse credit multiplier (remove asterisks for footnotes)
-    const rateRaw = cells[2]
-    if (!rateRaw) continue
     const rateMatch = rateRaw.match(/(\d+\.?\d*)x/)
-    const rate = rateMatch ? `${rateMatch[1]}x` : '1.0x'
+    if (!rateMatch) {
+      console.warn(`Model catalog: unparseable cost '${rateRaw}' for ${modelName}, row skipped`)
+      continue
+    }
+    const rate = `${rateMatch[1]}x`
 
-    // Convert display name to model ID
-    const id = modelNameToId(modelName)
+    const parsedContext = parseContextTokens(contextRaw)
+    if (parsedContext === undefined && contextRaw !== '—') {
+      console.warn(`Model catalog: unparseable context '${contextRaw}' for ${modelName}`)
+    }
+    const context = parsedContext ?? bundled?.context ?? 200000
 
     // Table has no tier info, so carry two-tier pricing over from bundled data
-    const longContext = BUNDLED_MODEL_CATALOG.find(
-      (e) => canonicalModelId(e.id) === canonicalModelId(id)
-    )?.longContext
+    const longContext = bundled?.longContext
 
     catalog.set(id, {
       id,
