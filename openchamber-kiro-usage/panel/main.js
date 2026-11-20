@@ -1164,6 +1164,61 @@ textarea.oc-sdk-input { height: auto; padding: 8px 12px; resize: vertical; }
     return result;
   }
 
+  // panel/panel-src/budget.js
+  var isWorkday = (date) => {
+    const day = date.getDay();
+    return day >= 1 && day <= 5;
+  };
+  var localDay = (date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  var earliestReset = (epochs, now) => {
+    const future = epochs.filter((e) => Number.isFinite(e) && e > 0 && e > now.getTime() / 1e3);
+    return future.length ? Math.min(...future) : void 0;
+  };
+  var resolveCycleEnd = (nextDateReset, now) => {
+    if (Number.isFinite(nextDateReset) && nextDateReset > 0) {
+      const end = new Date(nextDateReset * 1e3);
+      if (end.getTime() > now.getTime()) return end;
+    }
+    return new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  };
+  var workdaysRemaining = (now, cycleEnd) => {
+    const endDay = localDay(cycleEnd).getTime();
+    let count = 0;
+    for (let d = localDay(now); d.getTime() < endDay; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) {
+      if (isWorkday(d)) count++;
+    }
+    return count;
+  };
+  var dailyBudget = (limit, used, today, workdays) => {
+    if (!(limit > 0) || !(workdays > 0)) return null;
+    const startOfDayUsed = Math.max(0, used - today);
+    return Math.max(0, limit - startOfDayUsed) / workdays;
+  };
+  var todayCredits = (buckets, now) => {
+    const midnight = localDay(now).getTime();
+    return (buckets || []).reduce((sum, b) => {
+      const start = new Date(b.start).getTime();
+      return start >= midnight ? sum + (b.total || 0) : sum;
+    }, 0);
+  };
+  var dailyBudgetLine = (today, limit, used, workdays) => {
+    if (today === null || today === void 0) return "";
+    const label = "Today (this machine's logs)";
+    const credits = today.toFixed(2);
+    if (workdays === 0) {
+      return `<div class="daily-budget">${label}: ${credits} credits \xB7 no workdays left in cycle</div>`;
+    }
+    const budget = dailyBudget(limit, used, today, workdays);
+    if (budget === null) return "";
+    if (budget === 0) {
+      const over = today > 0;
+      return `<div class="daily-budget${over ? " red" : ""}">${label}: ${credits} credits${over ? " \xB7 over limit" : ""} (budget 0.00/workday, ${workdays} workdays left)</div>`;
+    }
+    const pct = Math.round(today / budget * 100);
+    const colorClass = pct >= 90 ? "red" : pct >= 75 ? "orange" : "green";
+    return `<div class="daily-budget ${colorClass}">${label}: ${credits} credits \xB7 ${pct}% of daily budget (budget ${budget.toFixed(2)}/workday, ${workdays} workdays left)</div>`;
+  };
+
   // panel/panel-src/main.js
   var host = connectHost();
   var contentEl = document.getElementById("content");
@@ -1272,7 +1327,7 @@ textarea.oc-sdk-input { height: auto; padding: 8px 12px; resize: vertical; }
     }
     return { totalWorkdays, elapsedWorkdays };
   }
-  function renderAccounts(entries, totalUsed, totalLimit, totalPct, expectedByNow, paceOk, elapsedWorkdays, totalWorkdays) {
+  function renderAccounts(entries, totalUsed, totalLimit, totalPct, expectedByNow, paceOk, elapsedWorkdays, totalWorkdays, dailyText = "") {
     let html = "";
     entries.forEach((entry) => {
       if (entry.error) {
@@ -1301,6 +1356,7 @@ textarea.oc-sdk-input { height: auto; padding: 8px 12px; resize: vertical; }
         html += `
                 <div class="pace">
                     <div class="pace-label">Pace: ${totalUsed.toFixed(2)} used vs ${expectedByNow.toFixed(2)} expected by day ${elapsedWorkdays}/${totalWorkdays} workdays (<span class="pace-status ${paceOk ? "ok" : "over"}">${paceOk ? "on track" : "over budget"}</span>)</div>
+                    ${dailyText}
                     <div class="pace-bar">
                         <div class="pace-bar-fill ${paceOk ? "green" : "red"}" style="width: ${Math.min(totalUsed / totalLimit * 100, 100)}%"></div>
                         <div class="pace-marker" style="left: ${Math.min(expectedByNow / totalLimit * 100, 100)}%"></div>
@@ -2112,6 +2168,19 @@ ${responseHtml}`;
     };
     return section;
   }
+  async function fetchTodayCredits(now) {
+    try {
+      const result = await host.serviceRequest({
+        method: "GET",
+        path: "/usage/series?range=24h&bucket=hour&split=model"
+      });
+      const data = typeof result.body === "string" ? JSON.parse(result.body) : result.body;
+      if (result.status && result.status >= 400) return null;
+      return todayCredits(data?.buckets, now);
+    } catch {
+      return null;
+    }
+  }
   async function refreshUsage() {
     try {
       const result = await host.serviceRequest({
@@ -2128,8 +2197,21 @@ ${responseHtml}`;
       const { totalWorkdays, elapsedWorkdays } = computeWorkdayPace();
       const expectedByNow = totalWorkdays > 0 ? totalLimit / totalWorkdays * elapsedWorkdays : 0;
       const paceOk = totalUsed <= expectedByNow;
-      renderAccounts(entries, totalUsed, totalLimit, totalPct, expectedByNow, paceOk, elapsedWorkdays, totalWorkdays);
+      const now = /* @__PURE__ */ new Date();
+      const resetEpoch = earliestReset(successful.map((entry) => entry.nextDateReset), now);
+      const cycleEnd = resolveCycleEnd(resetEpoch, now);
+      const workdays = workdaysRemaining(now, cycleEnd);
+      renderAccounts(entries, totalUsed, totalLimit, totalPct, expectedByNow, paceOk, elapsedWorkdays, totalWorkdays, "");
       updateLastUpdated();
+      if (totalLimit > 0) {
+        fetchTodayCredits(now).then((today) => {
+          const el2 = document.querySelector(".pace");
+          if (!el2 || today === null) return;
+          const line = dailyBudgetLine(today, totalLimit, totalUsed, workdays);
+          el2.querySelector(".daily-budget")?.remove();
+          el2.insertAdjacentHTML("beforeend", line);
+        });
+      }
       const accountsEl = document.getElementById("accounts");
       let chartSection = document.querySelector(".uc");
       if (!chartSection) {

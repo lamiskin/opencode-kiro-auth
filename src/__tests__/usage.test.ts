@@ -194,6 +194,31 @@ describe('fetchUsageLimits', () => {
     }
   })
 
+  test('returns nextDateReset from top level, falling back to breakdown entry', async () => {
+    const respond = (body: object) =>
+      mock(async () => new Response(JSON.stringify(body), { status: 200 }))
+    const original = globalThis.fetch
+    try {
+      globalThis.fetch = respond({
+        nextDateReset: 1796083200,
+        usageBreakdownList: [{ currentUsage: 1, usageLimit: 5, nextDateReset: 1 }],
+        userInfo: { email: 'test@example.com' }
+      }) as any
+      expect((await realFetchUsageLimits(makeAuth())).nextDateReset).toBe(1796083200)
+
+      globalThis.fetch = respond({
+        usageBreakdownList: [{ currentUsage: 1, usageLimit: 5, nextDateReset: 1796083200 }],
+        userInfo: { email: 'test@example.com' }
+      }) as any
+      expect((await realFetchUsageLimits(makeAuth())).nextDateReset).toBe(1796083200)
+
+      globalThis.fetch = respond({ usageBreakdownList: [], userInfo: {} }) as any
+      expect((await realFetchUsageLimits(makeAuth())).nextDateReset).toBeUndefined()
+    } finally {
+      globalThis.fetch = original
+    }
+  })
+
   test('retries on FEATURE_NOT_SUPPORTED and succeeds on later attempt', async () => {
     let callCount = 0
     const mockFetch = mock(async () => {

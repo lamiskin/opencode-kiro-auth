@@ -1,6 +1,7 @@
 import { connectHost } from "@openchamber/sdk";
 import { applyHostReady } from "@openchamber/sdk/ui";
 import { getColor, validateColorMaps } from "./colors.js";
+import { earliestReset, resolveCycleEnd, workdaysRemaining, dailyBudgetLine, todayCredits } from "./budget.js";
 
 const host = connectHost();
 const contentEl = document.getElementById('content');
@@ -141,7 +142,7 @@ function computeWorkdayPace(now = new Date()) {
     return { totalWorkdays, elapsedWorkdays };
 }
 
-function renderAccounts(entries, totalUsed, totalLimit, totalPct, expectedByNow, paceOk, elapsedWorkdays, totalWorkdays) {
+function renderAccounts(entries, totalUsed, totalLimit, totalPct, expectedByNow, paceOk, elapsedWorkdays, totalWorkdays, dailyText = '') {
     let html = '';
 
     entries.forEach(entry => {
@@ -173,6 +174,7 @@ function renderAccounts(entries, totalUsed, totalLimit, totalPct, expectedByNow,
             html += `
                 <div class="pace">
                     <div class="pace-label">Pace: ${totalUsed.toFixed(2)} used vs ${expectedByNow.toFixed(2)} expected by day ${elapsedWorkdays}/${totalWorkdays} workdays (<span class="pace-status ${paceOk ? 'ok' : 'over'}">${paceOk ? 'on track' : 'over budget'}</span>)</div>
+                    ${dailyText}
                     <div class="pace-bar">
                         <div class="pace-bar-fill ${paceOk ? 'green' : 'red'}" style="width: ${Math.min((totalUsed / totalLimit) * 100, 100)}%"></div>
                         <div class="pace-marker" style="left: ${Math.min((expectedByNow / totalLimit) * 100, 100)}%"></div>
@@ -1143,6 +1145,23 @@ function buildChartSection() {
     return section;
 }
 
+// ====== DAILY BUDGET ======
+
+// Credits used since local midnight, from the hourly 24h series. Null when the service call fails.
+async function fetchTodayCredits(now) {
+    try {
+        const result = await host.serviceRequest({
+            method: 'GET',
+            path: '/usage/series?range=24h&bucket=hour&split=model'
+        });
+        const data = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
+        if (result.status && result.status >= 400) return null;
+        return todayCredits(data?.buckets, now);
+    } catch {
+        return null;
+    }
+}
+
 // ====== USAGE REFRESH (updated) ======
 
 async function refreshUsage() {
@@ -1166,8 +1185,24 @@ async function refreshUsage() {
         const expectedByNow = totalWorkdays > 0 ? (totalLimit / totalWorkdays) * elapsedWorkdays : 0;
         const paceOk = totalUsed <= expectedByNow;
 
-        renderAccounts(entries, totalUsed, totalLimit, totalPct, expectedByNow, paceOk, elapsedWorkdays, totalWorkdays);
+        const now = new Date();
+        const resetEpoch = earliestReset(successful.map(entry => entry.nextDateReset), now);
+        const cycleEnd = resolveCycleEnd(resetEpoch, now);
+        const workdays = workdaysRemaining(now, cycleEnd);
+
+        renderAccounts(entries, totalUsed, totalLimit, totalPct, expectedByNow, paceOk, elapsedWorkdays, totalWorkdays, '');
         updateLastUpdated();
+
+        // Today line is patched in after /usage renders; failure hides only this line.
+        if (totalLimit > 0) {
+            fetchTodayCredits(now).then(today => {
+                const el = document.querySelector('.pace');
+                if (!el || today === null) return;
+                const line = dailyBudgetLine(today, totalLimit, totalUsed, workdays);
+                el.querySelector('.daily-budget')?.remove();
+                el.insertAdjacentHTML('beforeend', line);
+            });
+        }
 
         const accountsEl = document.getElementById('accounts');
         let chartSection = document.querySelector('.uc');
