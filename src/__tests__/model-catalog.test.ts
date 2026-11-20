@@ -222,6 +222,42 @@ Some text without a table.
         warn.mockRestore()
       }
     })
+
+    test('warns on a starred row with no bundled two-tier entry', () => {
+      const warn = spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        parseModelsMarkdown(`
+| Model | Context | Cost |
+|-------|:-------:|:----:|
+| **GPT-5.6 Sol** | 1M | 4.4x* |
+| **New Model** | 1M | 1x* |
+`)
+
+        expect(warn).toHaveBeenCalledTimes(1)
+      } finally {
+        warn.mockRestore()
+      }
+    })
+
+    test('keeps rate and bundled context when the context cell is empty', () => {
+      const warn = spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        const catalog = parseModelsMarkdown(`
+| Model | Context | Cost |
+|-------|:-------:|:----:|
+| **Grok 4.7** |  | 2.7x* |
+| **New Model** | | 1x |
+`)
+
+        expect(catalog.get('grok-4.7')?.rate).toBe('2.7x')
+        expect(catalog.get('grok-4.7')?.context).toBe(500000)
+        expect(catalog.get('new-model')?.rate).toBe('1x')
+        expect(catalog.get('new-model')?.context).toBe(200000)
+        expect(warn).toHaveBeenCalledTimes(2)
+      } finally {
+        warn.mockRestore()
+      }
+    })
   })
 
   describe('live catalog precedence', () => {

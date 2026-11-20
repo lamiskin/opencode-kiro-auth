@@ -282,9 +282,10 @@ export function parseModelsMarkdown(markdown: string): Map<string, ModelCatalogE
     if (!line) continue
 
     const cells = line
+      .trim()
+      .replace(/^\||\|$/g, '')
       .split('|')
       .map((cell) => cell.trim())
-      .filter((cell) => cell)
 
     if (cells.length < 3) continue
 
@@ -296,9 +297,9 @@ export function parseModelsMarkdown(markdown: string): Map<string, ModelCatalogE
       .replace(/\*\*/g, '')
       .trim()
 
-    const contextRaw = cells[1]
+    const contextRaw = cells[1] ?? ''
     const rateRaw = cells[2]
-    if (!contextRaw || !rateRaw) continue
+    if (!rateRaw) continue
 
     const id = modelNameToId(modelName)
     const bundled = BUNDLED_MODEL_CATALOG.find(
@@ -321,6 +322,11 @@ export function parseModelsMarkdown(markdown: string): Map<string, ModelCatalogE
 
     // Table has no tier info, so carry two-tier pricing over from bundled data
     const longContext = bundled?.longContext
+    if (rateRaw.includes('*') && !longContext) {
+      console.warn(
+        `Model catalog: ${modelName} has two-tier pricing (*) but no bundled tier; surcharge not applied`
+      )
+    }
 
     catalog.set(id, {
       id,
