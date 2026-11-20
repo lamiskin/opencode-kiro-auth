@@ -35,7 +35,8 @@ export async function collectUsageEntries(
       updateAccountQuota(current, usage, accountManager)
       entries.push({
         email: current.email,
-        ...summarizeUsage(usage.usedCount || 0, usage.limitCount || 0)
+        ...summarizeUsage(usage.usedCount || 0, usage.limitCount || 0),
+        ...(usage.nextDateReset !== undefined && { nextDateReset: usage.nextDateReset })
       })
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)

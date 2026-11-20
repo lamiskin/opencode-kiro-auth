@@ -75,7 +75,10 @@ export async function fetchUsageLimits(auth: KiroAuthDetails): Promise<any> {
           limitCount += s.usageLimitWithPrecision ?? s.usageLimit ?? 0
         }
       }
-      return { usedCount, limitCount, email: data.userInfo?.email }
+      // Cycle reset as epoch seconds. Top-level field is authoritative; the breakdown copy is a fallback.
+      const nextDateReset: number | undefined =
+        data.nextDateReset ?? data.usageBreakdownList?.[0]?.nextDateReset ?? undefined
+      return { usedCount, limitCount, email: data.userInfo?.email, nextDateReset }
     } catch (e) {
       // Network errors bubble up — don't try the next param combo.
       throw e instanceof Error ? e : new Error(String(e))
@@ -102,6 +105,8 @@ export interface KiroUsageReportEntry {
   used?: number
   limit?: number
   pct?: number
+  /** Cycle reset, epoch seconds. Absent when Kiro does not report it. */
+  nextDateReset?: number
   error?: string
 }
 

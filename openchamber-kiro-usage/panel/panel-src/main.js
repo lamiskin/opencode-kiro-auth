@@ -1,6 +1,7 @@
 import { connectHost } from "@openchamber/sdk";
 import { applyHostReady } from "@openchamber/sdk/ui";
 import { getColor, validateColorMaps } from "./colors.js";
+import { resolveCycleEnd, workdaysRemaining, dailyBudget, todayCredits } from "./budget.js";
 
 const host = connectHost();
 const contentEl = document.getElementById('content');
@@ -141,7 +142,7 @@ function computeWorkdayPace(now = new Date()) {
     return { totalWorkdays, elapsedWorkdays };
 }
 
-function renderAccounts(entries, totalUsed, totalLimit, totalPct, expectedByNow, paceOk, elapsedWorkdays, totalWorkdays) {
+function renderAccounts(entries, totalUsed, totalLimit, totalPct, expectedByNow, paceOk, elapsedWorkdays, totalWorkdays, dailyText = '') {
     let html = '';
 
     entries.forEach(entry => {
@@ -173,6 +174,7 @@ function renderAccounts(entries, totalUsed, totalLimit, totalPct, expectedByNow,
             html += `
                 <div class="pace">
                     <div class="pace-label">Pace: ${totalUsed.toFixed(2)} used vs ${expectedByNow.toFixed(2)} expected by day ${elapsedWorkdays}/${totalWorkdays} workdays (<span class="pace-status ${paceOk ? 'ok' : 'over'}">${paceOk ? 'on track' : 'over budget'}</span>)</div>
+                    ${dailyText}
                     <div class="pace-bar">
                         <div class="pace-bar-fill ${paceOk ? 'green' : 'red'}" style="width: ${Math.min((totalUsed / totalLimit) * 100, 100)}%"></div>
                         <div class="pace-marker" style="left: ${Math.min((expectedByNow / totalLimit) * 100, 100)}%"></div>
@@ -1143,6 +1145,35 @@ function buildChartSection() {
     return section;
 }
 
+// ====== DAILY BUDGET ======
+
+// Credits used since local midnight, from the hourly 24h series. Null when the service call fails.
+async function fetchTodayCredits(now) {
+    try {
+        const result = await host.serviceRequest({
+            method: 'GET',
+            path: '/usage/series?range=24h&bucket=hour&split=model'
+        });
+        const data = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
+        if (result.status && result.status >= 400) return null;
+        return todayCredits(data?.buckets, now);
+    } catch {
+        return null;
+    }
+}
+
+function dailyBudgetLine(today, budget, workdays) {
+    if (today === null) return '';
+    if (workdays === 0) {
+        return `<div class="daily-budget">Today: ${today.toFixed(2)} credits · no workdays left in cycle</div>`;
+    }
+    if (budget === null) return '';
+    const pctText = budget > 0 ? ` · ${Math.round((today / budget) * 100)}% of daily budget` : '';
+    const pct = budget > 0 ? (today / budget) * 100 : 0;
+    const colorClass = pct >= 90 ? 'red' : pct >= 75 ? 'orange' : 'green';
+    return `<div class="daily-budget ${colorClass}">Today: ${today.toFixed(2)} credits${pctText} (budget ${budget.toFixed(2)}/workday, ${workdays} workdays left)</div>`;
+}
+
 // ====== USAGE REFRESH (updated) ======
 
 async function refreshUsage() {
@@ -1166,7 +1197,15 @@ async function refreshUsage() {
         const expectedByNow = totalWorkdays > 0 ? (totalLimit / totalWorkdays) * elapsedWorkdays : 0;
         const paceOk = totalUsed <= expectedByNow;
 
-        renderAccounts(entries, totalUsed, totalLimit, totalPct, expectedByNow, paceOk, elapsedWorkdays, totalWorkdays);
+        const now = new Date();
+        const resetEpoch = successful.find(entry => Number.isFinite(entry.nextDateReset))?.nextDateReset;
+        const cycleEnd = resolveCycleEnd(resetEpoch, now);
+        const workdays = workdaysRemaining(now, cycleEnd);
+        const budget = dailyBudget(totalLimit, totalUsed, workdays);
+        const today = await fetchTodayCredits(now);
+        const dailyText = totalLimit > 0 ? dailyBudgetLine(today, budget, workdays) : '';
+
+        renderAccounts(entries, totalUsed, totalLimit, totalPct, expectedByNow, paceOk, elapsedWorkdays, totalWorkdays, dailyText);
         updateLastUpdated();
 
         const accountsEl = document.getElementById('accounts');
