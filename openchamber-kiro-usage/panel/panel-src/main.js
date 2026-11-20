@@ -1,7 +1,7 @@
 import { connectHost } from "@openchamber/sdk";
 import { applyHostReady } from "@openchamber/sdk/ui";
 import { getColor, validateColorMaps } from "./colors.js";
-import { resolveCycleEnd, workdaysRemaining, dailyBudget, todayCredits } from "./budget.js";
+import { earliestReset, resolveCycleEnd, workdaysRemaining, dailyBudgetLine, todayCredits } from "./budget.js";
 
 const host = connectHost();
 const contentEl = document.getElementById('content');
@@ -1162,18 +1162,6 @@ async function fetchTodayCredits(now) {
     }
 }
 
-function dailyBudgetLine(today, budget, workdays) {
-    if (today === null) return '';
-    if (workdays === 0) {
-        return `<div class="daily-budget">Today: ${today.toFixed(2)} credits · no workdays left in cycle</div>`;
-    }
-    if (budget === null) return '';
-    const pctText = budget > 0 ? ` · ${Math.round((today / budget) * 100)}% of daily budget` : '';
-    const pct = budget > 0 ? (today / budget) * 100 : 0;
-    const colorClass = pct >= 90 ? 'red' : pct >= 75 ? 'orange' : 'green';
-    return `<div class="daily-budget ${colorClass}">Today: ${today.toFixed(2)} credits${pctText} (budget ${budget.toFixed(2)}/workday, ${workdays} workdays left)</div>`;
-}
-
 // ====== USAGE REFRESH (updated) ======
 
 async function refreshUsage() {
@@ -1198,15 +1186,23 @@ async function refreshUsage() {
         const paceOk = totalUsed <= expectedByNow;
 
         const now = new Date();
-        const resetEpoch = successful.find(entry => Number.isFinite(entry.nextDateReset))?.nextDateReset;
+        const resetEpoch = earliestReset(successful.map(entry => entry.nextDateReset), now);
         const cycleEnd = resolveCycleEnd(resetEpoch, now);
         const workdays = workdaysRemaining(now, cycleEnd);
-        const budget = dailyBudget(totalLimit, totalUsed, workdays);
-        const today = await fetchTodayCredits(now);
-        const dailyText = totalLimit > 0 ? dailyBudgetLine(today, budget, workdays) : '';
 
-        renderAccounts(entries, totalUsed, totalLimit, totalPct, expectedByNow, paceOk, elapsedWorkdays, totalWorkdays, dailyText);
+        renderAccounts(entries, totalUsed, totalLimit, totalPct, expectedByNow, paceOk, elapsedWorkdays, totalWorkdays, '');
         updateLastUpdated();
+
+        // Today line is patched in after /usage renders; failure hides only this line.
+        if (totalLimit > 0) {
+            fetchTodayCredits(now).then(today => {
+                const el = document.querySelector('.pace');
+                if (!el || today === null) return;
+                const line = dailyBudgetLine(today, totalLimit, totalUsed, workdays);
+                el.querySelector('.daily-budget')?.remove();
+                el.insertAdjacentHTML('beforeend', line);
+            });
+        }
 
         const accountsEl = document.getElementById('accounts');
         let chartSection = document.querySelector('.uc');

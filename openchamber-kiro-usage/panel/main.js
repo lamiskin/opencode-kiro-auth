@@ -1170,6 +1170,10 @@ textarea.oc-sdk-input { height: auto; padding: 8px 12px; resize: vertical; }
     return day >= 1 && day <= 5;
   };
   var localDay = (date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  var earliestReset = (epochs, now) => {
+    const future = epochs.filter((e) => Number.isFinite(e) && e > 0 && e > now.getTime() / 1e3);
+    return future.length ? Math.min(...future) : void 0;
+  };
   var resolveCycleEnd = (nextDateReset, now) => {
     if (Number.isFinite(nextDateReset) && nextDateReset > 0) {
       const end = new Date(nextDateReset * 1e3);
@@ -1185,9 +1189,10 @@ textarea.oc-sdk-input { height: auto; padding: 8px 12px; resize: vertical; }
     }
     return count;
   };
-  var dailyBudget = (limit, used, workdays) => {
+  var dailyBudget = (limit, used, today, workdays) => {
     if (!(limit > 0) || !(workdays > 0)) return null;
-    return Math.max(0, limit - used) / workdays;
+    const startOfDayUsed = Math.max(0, used - today);
+    return Math.max(0, limit - startOfDayUsed) / workdays;
   };
   var todayCredits = (buckets, now) => {
     const midnight = localDay(now).getTime();
@@ -1195,6 +1200,23 @@ textarea.oc-sdk-input { height: auto; padding: 8px 12px; resize: vertical; }
       const start = new Date(b.start).getTime();
       return start >= midnight ? sum + (b.total || 0) : sum;
     }, 0);
+  };
+  var dailyBudgetLine = (today, limit, used, workdays) => {
+    if (today === null || today === void 0) return "";
+    const label = "Today (this machine's logs)";
+    const credits = today.toFixed(2);
+    if (workdays === 0) {
+      return `<div class="daily-budget">${label}: ${credits} credits \xB7 no workdays left in cycle</div>`;
+    }
+    const budget = dailyBudget(limit, used, today, workdays);
+    if (budget === null) return "";
+    if (budget === 0) {
+      const over = today > 0;
+      return `<div class="daily-budget${over ? " red" : ""}">${label}: ${credits} credits${over ? " \xB7 over limit" : ""} (budget 0.00/workday, ${workdays} workdays left)</div>`;
+    }
+    const pct = Math.round(today / budget * 100);
+    const colorClass = pct >= 90 ? "red" : pct >= 75 ? "orange" : "green";
+    return `<div class="daily-budget ${colorClass}">${label}: ${credits} credits \xB7 ${pct}% of daily budget (budget ${budget.toFixed(2)}/workday, ${workdays} workdays left)</div>`;
   };
 
   // panel/panel-src/main.js
@@ -2159,17 +2181,6 @@ ${responseHtml}`;
       return null;
     }
   }
-  function dailyBudgetLine(today, budget, workdays) {
-    if (today === null) return "";
-    if (workdays === 0) {
-      return `<div class="daily-budget">Today: ${today.toFixed(2)} credits \xB7 no workdays left in cycle</div>`;
-    }
-    if (budget === null) return "";
-    const pctText = budget > 0 ? ` \xB7 ${Math.round(today / budget * 100)}% of daily budget` : "";
-    const pct = budget > 0 ? today / budget * 100 : 0;
-    const colorClass = pct >= 90 ? "red" : pct >= 75 ? "orange" : "green";
-    return `<div class="daily-budget ${colorClass}">Today: ${today.toFixed(2)} credits${pctText} (budget ${budget.toFixed(2)}/workday, ${workdays} workdays left)</div>`;
-  }
   async function refreshUsage() {
     try {
       const result = await host.serviceRequest({
@@ -2187,14 +2198,20 @@ ${responseHtml}`;
       const expectedByNow = totalWorkdays > 0 ? totalLimit / totalWorkdays * elapsedWorkdays : 0;
       const paceOk = totalUsed <= expectedByNow;
       const now = /* @__PURE__ */ new Date();
-      const resetEpoch = successful.find((entry) => Number.isFinite(entry.nextDateReset))?.nextDateReset;
+      const resetEpoch = earliestReset(successful.map((entry) => entry.nextDateReset), now);
       const cycleEnd = resolveCycleEnd(resetEpoch, now);
       const workdays = workdaysRemaining(now, cycleEnd);
-      const budget = dailyBudget(totalLimit, totalUsed, workdays);
-      const today = await fetchTodayCredits(now);
-      const dailyText = totalLimit > 0 ? dailyBudgetLine(today, budget, workdays) : "";
-      renderAccounts(entries, totalUsed, totalLimit, totalPct, expectedByNow, paceOk, elapsedWorkdays, totalWorkdays, dailyText);
+      renderAccounts(entries, totalUsed, totalLimit, totalPct, expectedByNow, paceOk, elapsedWorkdays, totalWorkdays, "");
       updateLastUpdated();
+      if (totalLimit > 0) {
+        fetchTodayCredits(now).then((today) => {
+          const el2 = document.querySelector(".pace");
+          if (!el2 || today === null) return;
+          const line = dailyBudgetLine(today, totalLimit, totalUsed, workdays);
+          el2.querySelector(".daily-budget")?.remove();
+          el2.insertAdjacentHTML("beforeend", line);
+        });
+      }
       const accountsEl = document.getElementById("accounts");
       let chartSection = document.querySelector(".uc");
       if (!chartSection) {
