@@ -6,6 +6,7 @@
  * for offline/error scenarios.
  */
 
+import { TIERS } from './model-tiers.js'
 import { resolveKiroModel } from './models.js'
 
 const MODEL_CATALOG_URL = 'https://kiro.dev/docs/models.md'
@@ -20,8 +21,6 @@ export interface ModelCatalogEntry {
   rate: string
   /** Context window size */
   context: number
-  /** Two-tier pricing: requests above `threshold` tokens bill at `rate` instead of the base rate */
-  longContext?: { threshold: number; rate: string }
 }
 
 type CatalogCacheEntry = {
@@ -47,24 +46,21 @@ const BUNDLED_MODEL_CATALOG: ModelCatalogEntry[] = [
     id: 'gpt-5.6-sol',
     name: 'GPT-5.6 Sol',
     rate: '4.4x',
-    context: 1000000,
-    longContext: { threshold: 272000, rate: '8.8x' }
+    context: 1000000
   },
   { id: 'gpt-5.6-sol-272k', name: 'GPT-5.6 Sol 272K', rate: '4.4x', context: 272000 },
   {
     id: 'gpt-5.6-terra',
     name: 'GPT-5.6 Terra',
     rate: '2.2x',
-    context: 1000000,
-    longContext: { threshold: 272000, rate: '4.4x' }
+    context: 1000000
   },
   { id: 'gpt-5.6-terra-272k', name: 'GPT-5.6 Terra 272K', rate: '2.2x', context: 272000 },
   {
     id: 'gpt-5.6-luna',
     name: 'GPT-5.6 Luna',
     rate: '0.6x',
-    context: 1000000,
-    longContext: { threshold: 272000, rate: '1.2x' }
+    context: 1000000
   },
   { id: 'gpt-5.6-luna-272k', name: 'GPT-5.6 Luna 272K', rate: '0.6x', context: 272000 },
 
@@ -100,8 +96,7 @@ const BUNDLED_MODEL_CATALOG: ModelCatalogEntry[] = [
     id: 'claude-haiku-5-5',
     name: 'Claude Haiku 5.5',
     rate: '0.06x',
-    context: 1000000,
-    longContext: { threshold: 100000, rate: '0.3x' }
+    context: 1000000
   },
   { id: 'claude-haiku-5-5-100k', name: 'Claude Haiku 5.5 100K', rate: '0.06x', context: 100000 },
 
@@ -120,8 +115,7 @@ const BUNDLED_MODEL_CATALOG: ModelCatalogEntry[] = [
     id: 'grok-4.7',
     name: 'Grok 4.7',
     rate: '2.7x',
-    context: 500000,
-    longContext: { threshold: 200000, rate: '5.4x' }
+    context: 500000
   },
 
   // Thinking variants resolve to their base models in the catalog,
@@ -249,6 +243,13 @@ export function canonicalModelId(id: string): string {
   return id.replace(/(\d)\.(\d)/g, '$1-$2')
 }
 
+/** "64K" -> 64000, "1M" / "1.0M" -> 1000000; undefined when the cell has no size token. */
+export function parseContextTokens(cell: string): number | undefined {
+  const m = cell.match(/(\d+(?:\.\d+)?)\s*([KM])\b/i)
+  if (!m) return undefined
+  return Math.round(parseFloat(m[1]!) * (m[2]!.toUpperCase() === 'M' ? 1_000_000 : 1_000))
+}
+
 /**
  * Parse the markdown table from kiro.dev/docs/models.md
  *
@@ -275,9 +276,10 @@ export function parseModelsMarkdown(markdown: string): Map<string, ModelCatalogE
     if (!line) continue
 
     const cells = line
+      .trim()
+      .replace(/^\||\|$/g, '')
       .split('|')
       .map((cell) => cell.trim())
-      .filter((cell) => cell)
 
     if (cells.length < 3) continue
 
@@ -289,44 +291,41 @@ export function parseModelsMarkdown(markdown: string): Map<string, ModelCatalogE
       .replace(/\*\*/g, '')
       .trim()
 
-    // Parse context window
-    const contextRaw = cells[1]
-    if (!contextRaw) continue
-    let context = 200000 // default
-    if (contextRaw.includes('1M')) {
-      context = 1000000
-    } else if (contextRaw.includes('256K')) {
-      context = 256000
-    } else if (contextRaw.includes('200K')) {
-      context = 200000
-    } else if (contextRaw.includes('128K')) {
-      context = 128000
-    } else if (contextRaw.includes('272K')) {
-      context = 272000
-    } else if (contextRaw.includes('500K')) {
-      context = 500000
-    }
-
-    // Parse credit multiplier (remove asterisks for footnotes)
+    const contextRaw = cells[1] ?? ''
     const rateRaw = cells[2]
     if (!rateRaw) continue
-    const rateMatch = rateRaw.match(/(\d+\.?\d*)x/)
-    const rate = rateMatch ? `${rateMatch[1]}x` : '1.0x'
 
-    // Convert display name to model ID
     const id = modelNameToId(modelName)
-
-    // Table has no tier info, so carry two-tier pricing over from bundled data
-    const longContext = BUNDLED_MODEL_CATALOG.find(
+    const bundled = BUNDLED_MODEL_CATALOG.find(
       (e) => canonicalModelId(e.id) === canonicalModelId(id)
-    )?.longContext
+    )
+
+    // Parse credit multiplier (remove asterisks for footnotes)
+    const rateMatch = rateRaw.match(/(\d+\.?\d*)x/)
+    if (!rateMatch) {
+      console.warn(`Model catalog: unparseable cost '${rateRaw}' for ${modelName}, row skipped`)
+      continue
+    }
+    const rate = `${rateMatch[1]}x`
+
+    const parsedContext = parseContextTokens(contextRaw)
+    if (parsedContext === undefined && contextRaw !== '—') {
+      console.warn(`Model catalog: unparseable context '${contextRaw}' for ${modelName}`)
+    }
+    const context = parsedContext ?? bundled?.context ?? 200000
+
+    // Two-tier surcharges come from TIERS, which the table does not carry
+    if (rateRaw.includes('*') && !TIERS.some((t) => t.test.test(id))) {
+      console.warn(
+        `Model catalog: ${modelName} has two-tier pricing (*) but no TIERS entry; surcharge not applied`
+      )
+    }
 
     catalog.set(id, {
       id,
       name: modelName,
       rate,
-      context,
-      ...(longContext ? { longContext } : {})
+      context
     })
   }
 
@@ -438,15 +437,6 @@ export function rateLookupCandidates(modelId: string): string[] {
  */
 export function getModelRate(modelId: string): string {
   return getModelCatalogEntry(modelId)?.rate ?? '1.0x'
-}
-
-/**
- * Get the above-threshold (long-context) pricing tier for a model, if it has one.
- */
-export function getModelLongContext(
-  modelId: string
-): { threshold: number; rate: string } | undefined {
-  return getModelCatalogEntry(modelId)?.longContext
 }
 
 /**

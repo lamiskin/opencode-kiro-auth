@@ -1,12 +1,12 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test'
 import {
   clearModelCatalog,
   getAvailableModelIds,
   getModelCatalogEntry,
   getModelContextWindow,
-  getModelLongContext,
   getModelRate,
   initializeModelCatalog,
+  parseContextTokens,
   parseModelsMarkdown,
   refreshModelCatalog
 } from '../plugin/model-catalog.js'
@@ -164,8 +164,96 @@ Some text without a table.
 | **GPT-5.6 Sol** | 1M | 4.4x* |
 `
       const catalog = parseModelsMarkdown(markdown)
+    })
 
-      expect(catalog.get('gpt-5.6-sol')?.longContext).toEqual({ threshold: 272000, rate: '8.8x' })
+    test('parses any K or M context size', () => {
+      expect(parseContextTokens('11M')).toBe(11000000)
+      expect(parseContextTokens('1.0M')).toBe(1000000)
+      expect(parseContextTokens('64K')).toBe(64000)
+
+      const catalog = parseModelsMarkdown(`
+| Model | Context | Cost |
+|-------|:-------:|:----:|
+| **Haiku Companion** | 100K | 0.06x |
+| **Foo Model** | 64K | 1x |
+| **Bar Model** | 1.0M | 1x |
+`)
+
+      expect(catalog.get('haiku-companion')?.context).toBe(100000)
+      expect(catalog.get('foo-model')?.context).toBe(64000)
+      expect(catalog.get('bar-model')?.context).toBe(1000000)
+    })
+
+    test('falls back to bundled context for unparseable cells without warning on a dash', () => {
+      const warn = spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        const catalog = parseModelsMarkdown(`
+| Model | Context | Cost |
+|-------|:-------:|:----:|
+| **Auto** | — | 1.0x |
+| **Grok 4.7** | TBD | 2.7x |
+| **New Model** | TBD | 1x |
+`)
+
+        expect(catalog.get('auto')?.context).toBe(200000)
+        expect(catalog.get('grok-4.7')?.context).toBe(500000)
+        expect(catalog.get('new-model')?.context).toBe(200000)
+        expect(warn).toHaveBeenCalledTimes(2)
+      } finally {
+        warn.mockRestore()
+      }
+    })
+
+    test('skips rows whose cost cannot be parsed', () => {
+      const warn = spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        const catalog = parseModelsMarkdown(`
+| Model | Context | Cost |
+|-------|:-------:|:----:|
+| **Claude Opus 5** | 1M | n/a |
+`)
+
+        expect(catalog.has('claude-opus-5')).toBe(false)
+        expect(warn).toHaveBeenCalledTimes(1)
+      } finally {
+        warn.mockRestore()
+      }
+    })
+
+    test('warns on a starred row with no bundled two-tier entry', () => {
+      const warn = spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        parseModelsMarkdown(`
+| Model | Context | Cost |
+|-------|:-------:|:----:|
+| **GPT-5.6 Sol** | 1M | 4.4x* |
+| **New Model** | 1M | 1x* |
+`)
+
+        expect(warn).toHaveBeenCalledTimes(1)
+      } finally {
+        warn.mockRestore()
+      }
+    })
+
+    test('keeps rate and bundled context when the context cell is empty', () => {
+      const warn = spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        const catalog = parseModelsMarkdown(`
+| Model | Context | Cost |
+|-------|:-------:|:----:|
+| **Grok 4.7** |  | 2.7x* |
+| **New Model** | | 1x |
+`)
+
+        expect(catalog.get('grok-4.7')?.rate).toBe('2.7x')
+        expect(catalog.get('grok-4.7')?.context).toBe(500000)
+        expect(catalog.get('new-model')?.rate).toBe('1x')
+        expect(catalog.get('new-model')?.context).toBe(200000)
+        expect(warn).toHaveBeenCalledTimes(2)
+      } finally {
+        warn.mockRestore()
+      }
     })
   })
 
@@ -190,23 +278,7 @@ Some text without a table.
     })
   })
 
-  describe('getModelLongContext', () => {
-    test('returns two-tier pricing for models that have it', () => {
-      initializeModelCatalog()
-
-      expect(getModelLongContext('claude-haiku-5-5')).toEqual({ threshold: 100000, rate: '0.3x' })
-      expect(getModelLongContext('gpt-5.6-sol')).toEqual({ threshold: 272000, rate: '8.8x' })
-      expect(getModelLongContext('gpt-5.6-terra')).toEqual({ threshold: 272000, rate: '4.4x' })
-      expect(getModelLongContext('gpt-5.6-luna')).toEqual({ threshold: 272000, rate: '1.2x' })
-    })
-
-    test('returns undefined for models without two-tier pricing', () => {
-      initializeModelCatalog()
-
-      expect(getModelLongContext('kimi-k3')).toBeUndefined()
-      expect(getModelLongContext('unknown-model')).toBeUndefined()
-    })
-
+  describe('two-tier pricing', () => {
     test('base rates unchanged by long-context tier', () => {
       initializeModelCatalog()
 
