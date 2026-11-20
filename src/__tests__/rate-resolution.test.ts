@@ -175,7 +175,7 @@ describe('dot/hyphen canonical ids', () => {
     expect(canonicalModelId('grok-4.7')).toBe(canonicalModelId('grok-4-7'))
   })
 
-  it('parses a 500K context row and carries Haiku 5.5 long-context tier across spellings', () => {
+  it('parses a 500K context row for Grok 4.7 across spellings', () => {
     const markdown = [
       '| Model | Context | Cost | Regions | Free |',
       '|-------|:-------:|:----:|:-------:|:----:|',
@@ -186,10 +186,7 @@ describe('dot/hyphen canonical ids', () => {
     ].join('\n')
     const catalog = parseModelsMarkdown(markdown)
     expect(catalog.get('grok-4.7')?.context).toBe(500000)
-    expect(catalog.get('claude-haiku-5.5')?.longContext).toEqual({
-      threshold: 100000,
-      rate: '0.3x'
-    })
+    expect(catalog.get('claude-haiku-5.5')?.rate).toBe('0.06x')
   })
 })
 

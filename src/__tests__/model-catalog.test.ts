@@ -4,7 +4,6 @@ import {
   getAvailableModelIds,
   getModelCatalogEntry,
   getModelContextWindow,
-  getModelLongContext,
   getModelRate,
   initializeModelCatalog,
   parseContextTokens,
@@ -165,8 +164,6 @@ Some text without a table.
 | **GPT-5.6 Sol** | 1M | 4.4x* |
 `
       const catalog = parseModelsMarkdown(markdown)
-
-      expect(catalog.get('gpt-5.6-sol')?.longContext).toEqual({ threshold: 272000, rate: '8.8x' })
     })
 
     test('parses any K or M context size', () => {
@@ -281,23 +278,7 @@ Some text without a table.
     })
   })
 
-  describe('getModelLongContext', () => {
-    test('returns two-tier pricing for models that have it', () => {
-      initializeModelCatalog()
-
-      expect(getModelLongContext('claude-haiku-5-5')).toEqual({ threshold: 100000, rate: '0.3x' })
-      expect(getModelLongContext('gpt-5.6-sol')).toEqual({ threshold: 272000, rate: '8.8x' })
-      expect(getModelLongContext('gpt-5.6-terra')).toEqual({ threshold: 272000, rate: '4.4x' })
-      expect(getModelLongContext('gpt-5.6-luna')).toEqual({ threshold: 272000, rate: '1.2x' })
-    })
-
-    test('returns undefined for models without two-tier pricing', () => {
-      initializeModelCatalog()
-
-      expect(getModelLongContext('kimi-k3')).toBeUndefined()
-      expect(getModelLongContext('unknown-model')).toBeUndefined()
-    })
-
+  describe('two-tier pricing', () => {
     test('base rates unchanged by long-context tier', () => {
       initializeModelCatalog()
 

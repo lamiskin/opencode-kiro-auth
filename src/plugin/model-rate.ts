@@ -1,4 +1,5 @@
 import { getModelCatalogEntry } from './model-catalog.js'
+import { TIERS } from './model-tiers.js'
 
 const warned = new Set<string>()
 
@@ -19,21 +20,6 @@ export function rateForLog(modelId: string, onMissing?: (message: string) => voi
   }
   return entry?.rate ?? '1.0x'
 }
-
-interface Tier {
-  test: RegExp
-  /** Input tokens above which Kiro bills the higher tier. */
-  threshold: number
-  /** Over-threshold multiplier, given the base multiplier. */
-  over: (base: number) => number
-}
-
-// Documented at kiro.dev/docs/models: GPT-5.6 doubles above 272K; Haiku 5.5 is 0.3x above 100K; Grok 4.7 doubles above 200K.
-const TIERS: Tier[] = [
-  { test: /^gpt-5[.-]6-/, threshold: 272000, over: (b) => b * 2 },
-  { test: /^claude-haiku-5[.-]5/, threshold: 100000, over: () => 0.3 },
-  { test: /^grok-4[.-]7/, threshold: 200000, over: (b) => b * 2 }
-]
 
 const fmt = (n: number) => `${+n.toFixed(2)}x`
 
