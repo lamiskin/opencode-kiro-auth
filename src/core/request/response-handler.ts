@@ -217,7 +217,10 @@ export class ResponseHandler {
       usage: {
         prompt_tokens: inputTokens,
         completion_tokens: outputTokens,
-        total_tokens: totalTokens || inputTokens + outputTokens
+        total_tokens: totalTokens || inputTokens + outputTokens,
+        cache_creation_input_tokens: cacheWriteInputTokens ?? 0,
+        cache_read_input_tokens: cacheReadInputTokens ?? 0,
+        prompt_tokens_details: { cached_tokens: cacheReadInputTokens ?? 0 }
       }
     }
 
